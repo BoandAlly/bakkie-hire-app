@@ -1,0 +1,11 @@
+{
+  "appId": "za.co.bakkiehire.app",
+  "appName": "Bakkie Hire",
+  "webDir": "dist",
+  "android": {
+    "allowMixedContent": false
+  },
+  "server": {
+    "androidScheme": "https"
+  }
+}
