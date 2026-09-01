@@ -45,4 +45,8 @@
 
     <!-- Before/after load photos from the driver's camera -->
     <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- Live location tag on delivery photos, and "Use my location" on the area picker -->
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
 </manifest>
