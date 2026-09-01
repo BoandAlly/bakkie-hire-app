@@ -1,27 +1,97 @@
 import { useMemo, useState } from 'react'
 import { placeByName } from '../data/places.js'
 import { VEHICLE_CLASSES, classById, VehicleSilhouette } from '../data/vehicleClasses.jsx'
-import { rateLabel } from '../lib/pricing.js'
+import { rateLabel, quote } from '../lib/pricing.js'
 import { roadKm } from '../lib/geo.js'
 import Icon, { StarIcon } from '../components/Icon.jsx'
 
-// Everything within reach, nearest first.
+// Everything within reach, sorted however the customer wants to look at it.
+
+// Per-km and per-hour rates can't be compared head-to-head, so "cheapest first"
+// prices a standard short move for every listing and compares the rand total.
+const REFERENCE_KM = 10
+
+const SORTS = [
+  { id: 'near', label: 'Nearest' },
+  { id: 'price', label: 'Cheapest' },
+  { id: 'rating', label: 'Top rated' },
+  { id: 'payload', label: 'Biggest load' },
+]
+
+// "Will my load fit?" — filter by how much weight the vehicle can carry, kg.
+const PAYLOADS = [
+  { kg: 0, label: 'Any load' },
+  { kg: 500, label: '500 kg+' },
+  { kg: 1000, label: '1 ton+' },
+  { kg: 2000, label: '2 ton+' },
+  { kg: 4000, label: '4 ton+' },
+]
 
 export default function Nearby({ listings, coords, areaName, onOpen, onChangeArea }) {
+  const [query, setQuery] = useState('')
   const [classFilter, setClassFilter] = useState('')
+  const [roundTripOnly, setRoundTripOnly] = useState(false)
+  const [insuredOnly, setInsuredOnly] = useState(false)
+  const [helpersOnly, setHelpersOnly] = useState(false)
+  const [minPayload, setMinPayload] = useState(0)
+  const [sort, setSort] = useState('near')
 
   const rows = useMemo(() => {
     if (!coords) return []
-    return listings
+    const q = query.trim().toLowerCase()
+
+    const scored = listings
       .map((l) => {
         const base = placeByName(l.baseLocation)
-        return { listing: l, km: base ? roadKm(coords, base) : null }
+        return {
+          listing: l,
+          km: base ? roadKm(coords, base) : null,
+          refPrice: quote(l, { distanceKm: REFERENCE_KM })?.total ?? Infinity,
+        }
       })
       // An operator who won't travel this far isn't available to this customer.
       .filter(({ listing, km }) => km != null && km <= listing.serviceRadiusKm)
       .filter(({ listing }) => (classFilter ? listing.vehicleClass === classFilter : true))
-      .sort((a, b) => a.km - b.km)
-  }, [listings, coords, classFilter])
+      .filter(({ listing }) => (roundTripOnly ? listing.roundTrip : true))
+      .filter(({ listing }) => (insuredOnly ? listing.gitInsured : true))
+      .filter(({ listing }) => (helpersOnly ? listing.helpersAvailable > 0 : true))
+      .filter(({ listing }) => (minPayload ? listing.payloadKg >= minPayload : true))
+      .filter(({ listing }) => (q ? matches(listing, q) : true))
+
+    const byNear = (a, b) => a.km - b.km
+    scored.sort((a, b) => {
+      switch (sort) {
+        case 'price':
+          return a.refPrice - b.refPrice || byNear(a, b)
+        case 'rating':
+          return b.listing.rating - a.listing.rating || byNear(a, b)
+        case 'payload':
+          return b.listing.payloadKg - a.listing.payloadKg || byNear(a, b)
+        default:
+          return byNear(a, b)
+      }
+    })
+    return scored
+  }, [listings, coords, query, classFilter, roundTripOnly, insuredOnly, helpersOnly, minPayload, sort])
+
+  const filtersActive =
+    !!query ||
+    !!classFilter ||
+    roundTripOnly ||
+    insuredOnly ||
+    helpersOnly ||
+    minPayload > 0 ||
+    sort !== 'near'
+
+  const clearAll = () => {
+    setQuery('')
+    setClassFilter('')
+    setRoundTripOnly(false)
+    setInsuredOnly(false)
+    setHelpersOnly(false)
+    setMinPayload(0)
+    setSort('near')
+  }
 
   return (
     <div className="screen wide">
@@ -33,6 +103,22 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
           <Icon name="chevron" size={15} className="dim" />
         </button>
       </header>
+
+      <div className="searchbar">
+        <Icon name="search" size={18} className="dim" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search vehicle, driver or type"
+          aria-label="Search listings"
+        />
+        {query && (
+          <button className="searchclear" onClick={() => setQuery('')} aria-label="Clear search">
+            <Icon name="close" size={16} />
+          </button>
+        )}
+      </div>
 
       <div className="chiprow" role="group" aria-label="Filter by vehicle type">
         <button
@@ -55,15 +141,83 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         ))}
       </div>
 
-      <p className="resultcount">
-        {rows.length} available{classFilter ? ` · ${classById(classFilter)?.name}` : ''}
-      </p>
+      <div className="chiprow" role="group" aria-label="More filters">
+        <button
+          className={roundTripOnly ? 'chip on' : 'chip'}
+          onClick={() => setRoundTripOnly((v) => !v)}
+          aria-pressed={roundTripOnly}
+        >
+          <Icon name="refresh" size={15} />
+          Round trip
+        </button>
+        <button
+          className={insuredOnly ? 'chip on' : 'chip'}
+          onClick={() => setInsuredOnly((v) => !v)}
+          aria-pressed={insuredOnly}
+        >
+          <Icon name="shield" size={15} />
+          Insured
+        </button>
+        <button
+          className={helpersOnly ? 'chip on' : 'chip'}
+          onClick={() => setHelpersOnly((v) => !v)}
+          aria-pressed={helpersOnly}
+        >
+          <Icon name="users" size={15} />
+          Has helpers
+        </button>
+      </div>
+
+      <div className="chiprow" role="group" aria-label="Minimum load capacity">
+        {PAYLOADS.map((p) => (
+          <button
+            key={p.kg}
+            className={minPayload === p.kg ? 'chip on' : 'chip'}
+            onClick={() => setMinPayload(p.kg)}
+            aria-pressed={minPayload === p.kg}
+          >
+            {p.kg > 0 && <Icon name="box" size={15} />}
+            {p.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="resultbar">
+        <p className="resultcount">
+          {rows.length} available{classFilter ? ` · ${classById(classFilter)?.name}` : ''}
+          {minPayload > 0 ? ` · ${PAYLOADS.find((p) => p.kg === minPayload)?.label}` : ''}
+          {filtersActive && (
+            <button className="clearlink" onClick={clearAll}>
+              Clear all
+            </button>
+          )}
+        </p>
+        <label className="sortsel">
+          <Icon name="sort" size={16} className="dim" />
+          <select value={sort} onChange={(e) => setSort(e.target.value)} aria-label="Sort listings">
+            {SORTS.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       {rows.length === 0 ? (
         <div className="blank">
           <Icon name="truck" size={30} />
-          <strong>Nothing in range here</strong>
-          <p>Try another vehicle type, or search from a different area.</p>
+          <strong>{query ? 'No matches' : 'Nothing in range here'}</strong>
+          <p>
+            {query
+              ? 'Try a different search, or clear your filters.'
+              : 'Try another vehicle type, or search from a different area.'}
+          </p>
+          {filtersActive && (
+            <button className="btn secondary" onClick={clearAll}>
+              Clear all filters
+            </button>
+          )}
         </div>
       ) : (
         <div className="grid">
@@ -79,6 +233,21 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
       )}
     </div>
   )
+}
+
+// Match against the things a customer would actually type: what it is, who runs
+// it, and the vehicle category name.
+function matches(listing, q) {
+  const hay = [
+    listing.title,
+    listing.ownerName,
+    listing.baseLocation,
+    classById(listing.vehicleClass)?.name,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+  return hay.includes(q)
 }
 
 function VehicleCard({ listing, km, onOpen }) {
@@ -122,7 +291,15 @@ function VehicleCard({ listing, km, onOpen }) {
             ` · ${listing.helpersAvailable} helper${listing.helpersAvailable > 1 ? 's' : ''}`}
         </span>
 
-        <span className="card-rate">{rateLabel(listing)}</span>
+        <span className="card-bottom">
+          <span className="card-rate">{rateLabel(listing)}</span>
+          {listing.roundTrip && (
+            <span className="pill">
+              <Icon name="refresh" size={12} />
+              Round trip
+            </span>
+          )}
+        </span>
       </span>
     </button>
   )

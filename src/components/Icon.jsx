@@ -111,6 +111,13 @@ const paths = {
     </>
   ),
   refresh: <path d="M20 11a8 8 0 1 0-.6 4M20 5v6h-6" />,
+  search: (
+    <>
+      <circle cx="11" cy="11" r="7" />
+      <path d="M20 20l-4.3-4.3" />
+    </>
+  ),
+  sort: <path d="M4 7h16M6 12h12M9 17h6" />,
 }
 
 export default function Icon({ name, size = 22, className = '', strokeWidth = 2 }) {
@@ -149,5 +156,20 @@ export function StarIcon({ size = 15, className = '' }) {
     >
       <path d="M12 2.6l2.9 5.9 6.5.95-4.7 4.58 1.11 6.47L12 17.44l-5.81 3.06 1.11-6.47-4.7-4.58 6.5-.95L12 2.6Z" />
     </svg>
+  )
+}
+
+// Read-only star row that supports fractions (4.5 shows half a star) by clipping
+// a gold copy over a grey one.
+export function Stars({ value = 0, size = 15 }) {
+  const pct = Math.max(0, Math.min(100, (value / 5) * 100))
+  const row = [0, 1, 2, 3, 4].map((i) => <StarIcon key={i} size={size} />)
+  return (
+    <span className="stars" role="img" aria-label={`${value} out of 5 stars`}>
+      <span className="stars-row bg">{row}</span>
+      <span className="stars-row fg" style={{ width: `${pct}%` }}>
+        {row}
+      </span>
+    </span>
   )
 }

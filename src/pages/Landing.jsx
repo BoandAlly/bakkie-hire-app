@@ -56,7 +56,8 @@ export default function Landing({ status, onRequest, onManual, onBack }) {
 
         {!blocked && (
           <p className="smallprint center">
-            We use it once, to sort vehicles by distance. Nothing is stored.
+            We use it to sort vehicles by distance, and remember it on this phone so
+            you don't have to set it every time. Change it whenever you like.
           </p>
         )}
       </div>

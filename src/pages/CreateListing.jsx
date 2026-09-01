@@ -23,6 +23,7 @@ const BLANK = {
   helperRate: '',
   baseLocation: '',
   serviceRadiusKm: 50,
+  roundTrip: false,
   gitInsured: false,
   gitCoverAmount: '',
 }
@@ -259,6 +260,22 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
               <span>{label}</span>
             </label>
           ))}
+        </div>
+
+        <div className="roundtrip">
+          <label className="check">
+            <input
+              type="checkbox"
+              checked={form.roundTrip}
+              onChange={(e) => set({ roundTrip: e.target.checked })}
+            />
+            <span>Willing to take the client back home?</span>
+          </label>
+          <p className="blockhint">
+            Some customers want to ride along with their goods and come back afterwards.
+            Tick this and you'll show a <strong>Round trip</strong> badge, so they know
+            upfront you'll bring them home — not just drop the load and leave.
+          </p>
         </div>
       </section>
 

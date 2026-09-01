@@ -1,5 +1,5 @@
 import { VehicleSilhouette } from '../data/vehicleClasses.jsx'
-import { lastMessage, timeLabel } from '../lib/threads.js'
+import { lastMessage, timeLabel, bookingSummary } from '../lib/threads.js'
 import Icon from '../components/Icon.jsx'
 
 // The driver's first screen. Enquiries are the only thing here that earns them
@@ -70,7 +70,11 @@ export default function DriverEnquiries({ driver, listings, threads, onOpenChat 
                     {last && <em className="when">{timeLabel(last.at)}</em>}
                   </span>
                   <span className="preview">
-                    {last ? last.text : 'No messages yet'}
+                    {last
+                      ? last.kind === 'booking' && last.booking
+                        ? bookingSummary(last.booking)
+                        : last.text
+                      : 'No messages yet'}
                   </span>
                   <span className="row-sub">{listing?.title}</span>
                 </span>

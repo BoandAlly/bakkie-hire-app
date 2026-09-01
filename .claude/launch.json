@@ -5,8 +5,9 @@
       "name": "bakkie-app",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev"],
-      "port": 5199,
-      "cwd": "C:\Users\Windows 10 Pro\Desktop\bakkie-app"
+      "port": 5210,
+      "autoPort": true,
+      "cwd": "C:/Users/Windows 10 Pro/Desktop/bakkie-app"
     }
   ]
 }

@@ -3,6 +3,36 @@ import { PLACES } from '../data/places.js'
 
 const R = 6371 // km
 
+// Where the customer last told us they are. Persisted so the location gate only
+// shows the first time — every reload after that reuses it until they change area.
+const LOCATION_KEY = 'bakkie.location.v1'
+
+function loadSavedLocation() {
+  try {
+    const raw = localStorage.getItem(LOCATION_KEY)
+    const saved = raw ? JSON.parse(raw) : null
+    return saved?.coords ? saved : null
+  } catch {
+    return null
+  }
+}
+
+function saveLocation(coords, areaName) {
+  try {
+    localStorage.setItem(LOCATION_KEY, JSON.stringify({ coords, areaName }))
+  } catch {
+    // Private window or quota — it just won't be remembered next launch.
+  }
+}
+
+function clearSavedLocation() {
+  try {
+    localStorage.removeItem(LOCATION_KEY)
+  } catch {
+    /* nothing to do */
+  }
+}
+
 export function haversineKm(a, b) {
   const dLat = ((b.lat - a.lat) * Math.PI) / 180
   const dLng = ((b.lng - a.lng) * Math.PI) / 180
@@ -39,9 +69,11 @@ export function nearestPlace(coords) {
  * manual area picker always stays available.
  */
 export function useLocation() {
-  const [status, setStatus] = useState('idle') // idle | asking | ready | denied | unsupported
-  const [coords, setCoords] = useState(null)
-  const [areaName, setAreaName] = useState('')
+  // A remembered location loads straight to 'ready', so the gate is skipped.
+  const saved = loadSavedLocation()
+  const [status, setStatus] = useState(saved ? 'ready' : 'idle') // idle | asking | ready | denied | unsupported
+  const [coords, setCoords] = useState(saved?.coords ?? null)
+  const [areaName, setAreaName] = useState(saved?.areaName ?? '')
 
   const request = useCallback(() => {
     if (!('geolocation' in navigator)) {
@@ -52,9 +84,11 @@ export function useLocation() {
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         const c = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        const name = nearestPlace(c)?.name ?? 'your area'
         setCoords(c)
-        setAreaName(nearestPlace(c)?.name ?? 'your area')
+        setAreaName(name)
         setStatus('ready')
+        saveLocation(c, name)
       },
       () => setStatus('denied'),
       { timeout: 8000, maximumAge: 300000 },
@@ -64,15 +98,18 @@ export function useLocation() {
   const setManual = useCallback((placeName) => {
     const p = PLACES.find((x) => x.name === placeName)
     if (!p) return
-    setCoords({ lat: p.lat, lng: p.lng })
+    const c = { lat: p.lat, lng: p.lng }
+    setCoords(c)
     setAreaName(p.name)
     setStatus('ready')
+    saveLocation(c, p.name)
   }, [])
 
   const reset = useCallback(() => {
     setStatus('idle')
     setCoords(null)
     setAreaName('')
+    clearSavedLocation()
   }, [])
 
   return { status, coords, areaName, request, setManual, reset }

@@ -1,6 +1,7 @@
 import { DOCS, docsSubmitted, verificationState } from '../lib/drivers.js'
 import { formatPhone } from '../lib/session.js'
-import Icon from '../components/Icon.jsx'
+import { driverRatingsReceived, averageRating, timeLabel } from '../lib/threads.js'
+import Icon, { Stars } from '../components/Icon.jsx'
 
 // Profile, paperwork and what you pay us. Kept off the working screens so the
 // driver only comes here when something needs sorting out.
@@ -8,6 +9,7 @@ import Icon from '../components/Icon.jsx'
 export default function DriverAccount({
   driver,
   listings,
+  threads,
   onToggleDoc,
   onApprove,
   onSwitchRole,
@@ -16,6 +18,10 @@ export default function DriverAccount({
 }) {
   const vState = verificationState(driver)
   const live = listings.filter((l) => !l.paused).length
+
+  const myIds = new Set(listings.map((l) => l.id))
+  const ratings = driverRatingsReceived(threads ?? [], myIds)
+  const avg = averageRating(ratings.map((r) => r.rating))
 
   return (
     <div className="screen">
@@ -36,6 +42,42 @@ export default function DriverAccount({
           </span>
         )}
       </div>
+
+      <section className="panel">
+        <h2>Your ratings</h2>
+        {ratings.length === 0 ? (
+          <p className="panel-hint">
+            No ratings yet. After you mark a job done and the customer rates you, their
+            score shows up here.
+          </p>
+        ) : (
+          <>
+            <div className="ratingsummary">
+              <span className="ratingsummary-avg">
+                <strong>{avg.toFixed(1)}</strong>
+                <Stars value={avg} size={18} />
+              </span>
+              <em>
+                {ratings.length} rating{ratings.length === 1 ? '' : 's'}
+              </em>
+            </div>
+            <div className="list tight">
+              {ratings.map((r, i) => (
+                <div className="ratingrow" key={i}>
+                  <span className="ratingrow-who">
+                    <strong>{r.name}</strong>
+                    {i === 0 && <em>Most recent · {timeLabel(r.at)}</em>}
+                  </span>
+                  <span className="ratingrow-score">
+                    <Stars value={r.rating} size={15} />
+                    <strong>{r.rating.toFixed(1)}</strong>
+                  </span>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </section>
 
       <section className="panel">
         <h2>Verification</h2>

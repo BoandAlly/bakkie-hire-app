@@ -9,7 +9,9 @@ import {
   newMessage,
   repliesWaiting,
   lastMessage,
+  isUpcoming,
 } from './lib/threads.js'
+import { scheduleBookingReminders, cancelBookingReminders } from './lib/notify.js'
 import {
   loadSession,
   saveSession,
@@ -76,6 +78,47 @@ export default function App() {
     () => (driver ? listingsForPhone(listings, driver.phone) : []),
     [listings, driver],
   )
+
+  // Keep the driver's leave-time reminders in sync with their bookings. Fires
+  // native notifications (30 min / 5 min / at leave-time) for each confirmed,
+  // still-upcoming pickup; cancels them once a trip is cancelled, done or past.
+  // Travel time is measured from the vehicle's base suburb to the pickup.
+  useEffect(() => {
+    if (session.role !== 'driver' || !driver) return
+    const myIds = new Set(myListings.map((l) => l.id))
+    const baseByListing = new Map(myListings.map((l) => [l.id, l.baseLocation]))
+
+    let tracked = {}
+    try {
+      tracked = JSON.parse(localStorage.getItem('bakkie.reminders.v1')) || {}
+    } catch {
+      tracked = {}
+    }
+    const next = { ...tracked }
+
+    for (const t of threads) {
+      if (!myIds.has(t.listingId)) continue
+      for (const m of t.messages) {
+        if (m.kind !== 'booking' || !m.booking) continue
+        const b = m.booking
+        const active = b.status === 'confirmed' && isUpcoming(b)
+        const sig = `${b.date}|${b.time}|${b.pickup}`
+        if (active && tracked[b.id] !== sig) {
+          scheduleBookingReminders(b, { name: baseByListing.get(t.listingId) })
+          next[b.id] = sig
+        } else if (!active && tracked[b.id]) {
+          cancelBookingReminders(b.id)
+          delete next[b.id]
+        }
+      }
+    }
+
+    try {
+      localStorage.setItem('bakkie.reminders.v1', JSON.stringify(next))
+    } catch {
+      /* private window — reminders still scheduled, just not deduped across reloads */
+    }
+  }, [threads, session.role, driver, myListings])
 
   const customer = session.customerEmail
     ? customerFor(customers, session.customerEmail)
@@ -217,13 +260,13 @@ export default function App() {
 
   /* ---------- messaging ---------- */
 
-  const sendMessage = (listingId, from, text) => {
+  const sendMessage = (listingId, from, text, extra) => {
     setThreads((prev) => {
       // Owner replies (customer null) match the listing's thread; a customer
       // matches their own. A thread is only ever created by a customer's first
       // message, so we can stamp their identity onto it here.
       const existing = threadFor(prev, listingId, customer?.email)
-      const msg = newMessage(from, text)
+      const msg = newMessage(from, text, extra)
       if (!existing)
         return [
           ...prev,
@@ -236,6 +279,21 @@ export default function App() {
         t.id === existing.id ? { ...t, messages: [...t.messages, msg] } : t,
       )
     })
+  }
+
+  // Bookings carry their own state (marked-done, each side's rating). Patching
+  // one means finding the booking message by id wherever it lives and merging in.
+  const patchBooking = (bookingId, patch) => {
+    setThreads((prev) =>
+      prev.map((t) => ({
+        ...t,
+        messages: t.messages.map((m) =>
+          m.kind === 'booking' && m.booking?.id === bookingId
+            ? { ...m, booking: { ...m.booking, ...patch } }
+            : m,
+        ),
+      })),
+    )
   }
 
   const current = useMemo(() => listings.find((l) => l.id === view.id), [listings, view.id])
@@ -400,6 +458,7 @@ export default function App() {
           <DriverAccount
             driver={driver}
             listings={myListings}
+            threads={threads}
             onToggleDoc={toggleDoc}
             onApprove={approveVerification}
             onSwitchRole={switchRole}
@@ -455,6 +514,7 @@ export default function App() {
                 ? go({ name: 'messages' })
                 : go({ name: 'truck', id: current.id })
             }
+            onPatchBooking={patchBooking}
             viewAs="customer"
           />
         )}
@@ -465,6 +525,7 @@ export default function App() {
             thread={threadFor(threads, current.id)}
             onSend={sendMessage}
             onBack={() => go({ name: 'enquiries' })}
+            onPatchBooking={patchBooking}
             viewAs="owner"
           />
         )}

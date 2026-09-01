@@ -1,5 +1,10 @@
 import { classById, VehicleSilhouette } from '../data/vehicleClasses.jsx'
-import { lastMessage, timeLabel } from '../lib/threads.js'
+import {
+  lastMessage,
+  timeLabel,
+  bookingsAwaitingCustomerRating,
+  bookingSummary,
+} from '../lib/threads.js'
 import Icon from '../components/Icon.jsx'
 
 // The customer's inbox. Without it the only way back into a conversation is
@@ -37,10 +42,11 @@ export default function Messages({ listings, threads, onOpen, onFind }) {
           {rows.map(({ thread, listing }) => {
             const last = lastMessage(thread)
             const replied = last?.from === 'owner'
+            const needsRating = bookingsAwaitingCustomerRating(thread)
             return (
               <button
                 key={thread.id}
-                className={replied ? 'row unread' : 'row'}
+                className={replied || needsRating ? 'row unread' : 'row'}
                 onClick={() => onOpen(listing.id)}
               >
                 <span className="avatar">
@@ -55,16 +61,28 @@ export default function Messages({ listings, threads, onOpen, onFind }) {
                     <strong>{listing.ownerName}</strong>
                     {last && <em className="when">{timeLabel(last.at)}</em>}
                   </span>
+                  {needsRating && (
+                    <span className="row-flag">
+                      <Icon name="check" size={13} />
+                      Trip done — rate your driver
+                    </span>
+                  )}
                   <span className="preview">
                     {last
-                      ? `${last.from === 'owner' ? '' : 'You: '}${last.text}`
+                      ? `${last.from === 'owner' ? '' : 'You: '}${
+                          last.kind === 'booking' && last.booking
+                            ? bookingSummary(last.booking)
+                            : last.text
+                        }`
                       : 'No messages yet'}
                   </span>
                   <span className="row-sub">
                     {classById(listing.vehicleClass)?.name} · {listing.title}
                   </span>
                 </span>
-                {replied && <span className="unread-dot" aria-label="New reply" />}
+                {(replied || needsRating) && (
+                  <span className="unread-dot" aria-label={needsRating ? 'Rate your trip' : 'New reply'} />
+                )}
               </button>
             )
           })}

@@ -120,6 +120,7 @@ export default function TruckDetail({ listing, coords, onBack, onMessage, signed
           <Feature on={listing.features.tailLift}>Tail-lift</Feature>
           <Feature on={listing.features.trailer}>Trailer</Feature>
           <Feature on={listing.features.straps}>Straps &amp; blankets</Feature>
+          <Feature on={listing.roundTrip}>Round trip — will bring you back home</Feature>
         </ul>
 
         {!listing.gitInsured && (

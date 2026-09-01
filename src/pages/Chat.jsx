@@ -1,9 +1,55 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { classById, VehicleSilhouette } from '../data/vehicleClasses.jsx'
-import { timeLabel } from '../lib/threads.js'
-import Icon from '../components/Icon.jsx'
+import { PLACES, routeDistanceKm } from '../data/places.js'
+import { quote, rateLabel, rand } from '../lib/pricing.js'
+import { timeLabel, bookingSummary, bookingDateLabel, isUpcoming } from '../lib/threads.js'
+import { nearestPlace } from '../lib/geo.js'
+import { formatPhone } from '../lib/session.js'
+import Icon, { Stars } from '../components/Icon.jsx'
 
 // Where the job actually gets arranged.
+
+// Shrink a camera photo before it goes into localStorage — full-res phone shots
+// are multi-megabyte and would blow the storage budget in a few pickups.
+function fileToDownscaledDataUrl(file, max = 1280, quality = 0.7) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file)
+    const img = new Image()
+    img.onload = () => {
+      URL.revokeObjectURL(url)
+      const scale = Math.min(1, max / Math.max(img.width, img.height))
+      const w = Math.round(img.width * scale)
+      const h = Math.round(img.height * scale)
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
+      resolve(canvas.toDataURL('image/jpeg', quality))
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('Could not read that image'))
+    }
+    img.src = url
+  })
+}
+
+// The driver's live position when they snap a photo, named to the nearest
+// suburb. Resolves to null (rather than rejecting) if location is off/declined,
+// so a photo still sends — just without the tag.
+function currentPlace() {
+  return new Promise((resolve) => {
+    if (!('geolocation' in navigator)) return resolve(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude }
+        resolve({ ...coords, place: nearestPlace(coords)?.name ?? null })
+      },
+      () => resolve(null),
+      { timeout: 8000, maximumAge: 60000 },
+    )
+  })
+}
 
 const OPENERS = [
   'Hi, is your bakkie available this Saturday morning?',
@@ -11,8 +57,17 @@ const OPENERS = [
   'What would you charge to move a room of furniture across town?',
 ]
 
-export default function Chat({ listing, thread, onSend, onBack, viewAs = 'customer' }) {
+export default function Chat({
+  listing,
+  thread,
+  onSend,
+  onBack,
+  onPatchBooking,
+  viewAs = 'customer',
+}) {
   const [draft, setDraft] = useState('')
+  const [calcOpen, setCalcOpen] = useState(false)
+  const [bookOpen, setBookOpen] = useState(false)
   const logRef = useRef(null)
   const cls = classById(listing.vehicleClass)
 
@@ -28,8 +83,39 @@ export default function Chat({ listing, thread, onSend, onBack, viewAs = 'custom
     setDraft('')
   }
 
+  // Driver snaps a before/after photo of the load; it's tagged with their live
+  // location + time and dropped into the chat so the customer sees it too.
+  const postPhoto = async (booking, phase, file) => {
+    let src
+    try {
+      src = await fileToDownscaledDataUrl(file)
+    } catch {
+      return
+    }
+    const loc = await currentPlace()
+    const at = new Date().toISOString()
+    const label = phase === 'before' ? 'Loading photo' : 'Delivery photo'
+    const text = `${label}${loc?.place ? ` — ${loc.place}` : ''}, ${timeLabel(at)}`
+    onSend(listing.id, 'owner', text, {
+      kind: 'photo',
+      photo: { phase, src, lat: loc?.lat, lng: loc?.lng, place: loc?.place ?? null, at, bookingId: booking.id },
+    })
+    onPatchBooking(
+      booking.id,
+      phase === 'before'
+        ? { photoBefore: true }
+        : { photoAfter: true, deliveredAt: at, deliveredPlace: loc?.place ?? null },
+    )
+  }
+
   const messages = thread?.messages ?? []
   const other = viewAs === 'customer' ? listing.ownerName : thread?.customerName ?? 'Customer'
+  const firstName = listing.ownerName.split(' ')[0]
+
+  // The fare tool is the customer's alone — it exists to help them decide whether
+  // to even start the conversation. The driver sets their rate; they don't need a
+  // calculator pointed back at themselves.
+  const isCustomer = viewAs === 'customer'
 
   return (
     <div className="chat">
@@ -69,13 +155,74 @@ export default function Chat({ listing, thread, onSend, onBack, viewAs = 'custom
           </div>
         )}
 
-        {messages.map((m, i) => (
-          <div key={i} className={`msg ${m.from === viewAs ? 'mine' : 'theirs'}`}>
-            <p>{m.text}</p>
-            <span>{timeLabel(m.at)}</span>
-          </div>
-        ))}
+        {messages.map((m, i) =>
+          m.kind === 'booking' && m.booking ? (
+            <BookingCard
+              key={i}
+              booking={m.booking}
+              at={m.at}
+              viewAs={viewAs}
+              onPatch={onPatchBooking}
+              onPhoto={postPhoto}
+            />
+          ) : m.kind === 'photo' && m.photo ? (
+            <PhotoMessage key={i} m={m} mine={m.from === viewAs} />
+          ) : (
+            <div key={i} className={`msg ${m.from === viewAs ? 'mine' : 'theirs'}`}>
+              <p>{m.text}</p>
+              <span>{timeLabel(m.at)}</span>
+            </div>
+          ),
+        )}
       </div>
+
+      {isCustomer && calcOpen && (
+        <FareCalculator
+          listing={listing}
+          firstName={firstName}
+          onClose={() => setCalcOpen(false)}
+          onAsk={(text) => {
+            send(text)
+            setCalcOpen(false)
+          }}
+        />
+      )}
+
+      {isCustomer && (
+        <button
+          className={calcOpen ? 'farebtn on' : 'farebtn'}
+          onClick={() => setCalcOpen((v) => !v)}
+          aria-expanded={calcOpen}
+        >
+          <Icon name="wallet" size={18} />
+          <span>Estimate a fare</span>
+          <Icon name="chevron" size={15} className="dim" />
+        </button>
+      )}
+
+      {!isCustomer && bookOpen && (
+        <BookingForm
+          listing={listing}
+          customerName={thread?.customerName ?? 'Customer'}
+          onClose={() => setBookOpen(false)}
+          onBook={(booking) => {
+            onSend(listing.id, 'owner', bookingSummary(booking), { kind: 'booking', booking })
+            setBookOpen(false)
+          }}
+        />
+      )}
+
+      {!isCustomer && (
+        <button
+          className={bookOpen ? 'farebtn on' : 'farebtn'}
+          onClick={() => setBookOpen((v) => !v)}
+          aria-expanded={bookOpen}
+        >
+          <Icon name="route" size={18} />
+          <span>Book a pickup</span>
+          <Icon name="chevron" size={15} className="dim" />
+        </button>
+      )}
 
       <div className="composer">
         <input
@@ -88,6 +235,439 @@ export default function Chat({ listing, thread, onSend, onBack, viewAs = 'custom
           <Icon name="send" size={19} />
         </button>
       </div>
+    </div>
+  )
+}
+
+// Client-side price guide. Pick a pickup and a drop-off, get an estimate off the
+// driver's own rate — the same maths the listing is quoted on everywhere else, so
+// it can't quietly disagree with the number they saw on the ad.
+function FareCalculator({ listing, firstName, onClose, onAsk }) {
+  const [from, setFrom] = useState('')
+  const [to, setTo] = useState('')
+
+  const result = useMemo(() => {
+    if (!from || !to || from === to) return null
+    const distanceKm = routeDistanceKm(from, to)
+    if (distanceKm == null) return null
+    return { distanceKm, q: quote(listing, { distanceKm, helpers: 0 }) }
+  }, [from, to, listing])
+
+  const askText = result
+    ? `Hi ${firstName}, roughly what would you charge to move from ${from} to ${to}? ` +
+      `(about ${result.distanceKm} km — I estimated around ${rand(result.q.total)}.)`
+    : ''
+
+  return (
+    <div className="farecalc">
+      <div className="farecalc-head">
+        <strong>Estimate a fare</strong>
+        <button onClick={onClose} aria-label="Close">
+          <Icon name="close" size={17} />
+        </button>
+      </div>
+
+      <div className="farecalc-fields">
+        <label className="field">
+          <span>Pick-up</span>
+          <select value={from} onChange={(e) => setFrom(e.target.value)}>
+            <option value="">Choose area</option>
+            {PLACES.map((p) => (
+              <option key={p.name}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Drop-off</span>
+          <select value={to} onChange={(e) => setTo(e.target.value)}>
+            <option value="">Choose area</option>
+            {PLACES.map((p) => (
+              <option key={p.name}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {from && to && from === to && (
+        <p className="farecalc-hint">Pick two different areas to get an estimate.</p>
+      )}
+
+      {result && (
+        <>
+          <div className="farecalc-result">
+            <span className="farecalc-total">≈ {rand(result.q.total)}</span>
+            <span className="farecalc-basis">
+              {result.distanceKm} km · {rateLabel(listing)}
+              {listing.rateUnit === 'hour' && ` · ~${result.q.hours} hr`}
+              {result.q.minApplied && ' · minimum applies'}
+            </span>
+          </div>
+          <p className="farecalc-note">
+            A guide off {firstName}'s rate — helpers and anything extra aren't included, and
+            the final price is whatever the two of you agree in the chat.
+          </p>
+          <button className="btn primary full" onClick={() => onAsk(askText)}>
+            <Icon name="send" size={17} />
+            Ask {firstName} about this trip
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+// Driver-only. Fills in the four things a pickup needs and drops a ticket into the
+// chat — the customer's copy of what was agreed, with the driver's number on it.
+function BookingForm({ listing, customerName, onClose, onBook }) {
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
+  const [pickup, setPickup] = useState('')
+  const [dropoff, setDropoff] = useState('')
+
+  const ready = date && time && pickup && dropoff && pickup !== dropoff
+
+  const submit = () => {
+    if (!ready) return
+    onBook({
+      id: `bk${Date.now()}`,
+      status: 'pending',
+      driverConfirmed: false,
+      customerConfirmed: false,
+      date,
+      time,
+      pickup,
+      dropoff,
+      driverName: listing.ownerName,
+      driverPhone: listing.ownerPhone,
+      customerName,
+    })
+  }
+
+  return (
+    <div className="farecalc">
+      <div className="farecalc-head">
+        <strong>Book a pickup</strong>
+        <button onClick={onClose} aria-label="Close">
+          <Icon name="close" size={17} />
+        </button>
+      </div>
+
+      <div className="farecalc-fields">
+        <label className="field">
+          <span>Date</span>
+          <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Time</span>
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Pick-up</span>
+          <select value={pickup} onChange={(e) => setPickup(e.target.value)}>
+            <option value="">Choose area</option>
+            {PLACES.map((p) => (
+              <option key={p.name}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Drop-off</span>
+          <select value={dropoff} onChange={(e) => setDropoff(e.target.value)}>
+            <option value="">Choose area</option>
+            {PLACES.map((p) => (
+              <option key={p.name}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {pickup && dropoff && pickup === dropoff && (
+        <p className="farecalc-hint">Pick-up and drop-off can't be the same place.</p>
+      )}
+
+      <button className="btn primary full" disabled={!ready} onClick={submit}>
+        <Icon name="check" size={17} />
+        Send booking to customer
+      </button>
+    </div>
+  )
+}
+
+// The ticket itself — the same card whichever side is looking at it, but the
+// action at the bottom depends on who's looking and where the trip's got to:
+// the driver marks it done and rates the customer; the customer rates the driver.
+function BookingCard({ booking, at, viewAs, onPatch, onPhoto }) {
+  const b = booking
+  const isDriver = viewAs === 'owner'
+  const status = b.status ?? 'pending'
+  const done = status === 'done'
+  const cancelled = status === 'cancelled'
+  const confirmed = status === 'confirmed'
+  const pending = status === 'pending'
+  const patch = (p) => onPatch?.(b.id, p)
+
+  const driverFirst = (b.driverName ?? 'the driver').split(' ')[0]
+  const custName = b.customerName ?? 'the customer'
+
+  // Which rating this viewer owns, and who it's about.
+  const myKey = isDriver ? 'custRating' : 'driverRating'
+  const myRating = b[myKey]
+  const target = isDriver ? custName : driverFirst
+
+  // Confirmation: each side has to agree before the pickup locks in.
+  const mineConfirmed = isDriver ? b.driverConfirmed : b.customerConfirmed
+  const otherConfirmed = isDriver ? b.customerConfirmed : b.driverConfirmed
+  const otherName = isDriver ? custName : driverFirst
+  const canCancel = (pending || confirmed) && isUpcoming(b)
+
+  const head = cancelled
+    ? { icon: 'close', label: 'Pickup cancelled' }
+    : done
+      ? { icon: 'check', label: 'Trip complete' }
+      : confirmed
+        ? { icon: 'check', label: 'Pickup confirmed' }
+        : { icon: 'route', label: 'Pickup requested' }
+
+  const confirmPickup = () => {
+    const key = isDriver ? 'driverConfirmed' : 'customerConfirmed'
+    patch({ [key]: true, ...(otherConfirmed ? { status: 'confirmed' } : {}) })
+  }
+
+  const cancelPickup = () => {
+    if (!window.confirm('Cancel this pickup? The other person will see it was called off.'))
+      return
+    patch({ status: 'cancelled', cancelledBy: viewAs, cancelledAt: new Date().toISOString() })
+  }
+
+  const cancelledBy =
+    b.cancelledBy === viewAs ? 'you' : isDriver ? 'the customer' : 'the driver'
+
+  const headClass = cancelled
+    ? 'bookingcard-head off'
+    : done || confirmed
+      ? 'bookingcard-head done'
+      : 'bookingcard-head'
+
+  return (
+    <div className={`bookingcard${cancelled ? ' cancelled' : ''}`}>
+      <div className={headClass}>
+        <Icon name={head.icon} size={16} />
+        <strong>{head.label}</strong>
+        <span>{timeLabel(at)}</span>
+      </div>
+      <div className="bookingcard-rows">
+        <Row label="Date" value={bookingDateLabel(b.date)} />
+        <Row label="Time" value={b.time} />
+        <Row label="From" value={b.pickup} />
+        <Row label="To" value={b.dropoff} />
+      </div>
+      <div className="bookingcard-foot">
+        <span>
+          <strong>{b.driverName}</strong>
+          <em>Your driver</em>
+        </span>
+        {b.driverPhone && (
+          <a className="bookingcard-call" href={`tel:${b.driverPhone.replace(/\s/g, '')}`}>
+            <Icon name="message" size={15} />
+            {formatPhone(b.driverPhone)}
+          </a>
+        )}
+      </div>
+
+      {cancelled && (
+        <div className="bookingcard-action muted">Pickup cancelled by {cancelledBy}.</div>
+      )}
+
+      {pending && (
+        <div className="bookingcard-action">
+          {mineConfirmed ? (
+            <p className="bookingcard-wait">
+              You confirmed — waiting for {otherName} to confirm the date and time.
+            </p>
+          ) : (
+            <button className="btn primary full" onClick={confirmPickup}>
+              <Icon name="check" size={17} />
+              Confirm pickup
+            </button>
+          )}
+          {canCancel && (
+            <button className="btn ghost full" onClick={cancelPickup}>
+              Cancel pickup
+            </button>
+          )}
+        </div>
+      )}
+
+      {confirmed && (
+        <div className="bookingcard-action">
+          {isDriver && <PhotoRow booking={b} onPhoto={onPhoto} />}
+
+          {b.photoAfter && (
+            <p className="bookingcard-delivered">
+              <Icon name="check" size={15} />
+              Delivery confirmed
+              {b.deliveredPlace ? ` — ${b.deliveredPlace}` : ''}
+              {b.deliveredAt ? `, ${timeLabel(b.deliveredAt)}` : ''}
+            </p>
+          )}
+
+          {isDriver ? (
+            <button
+              className="btn primary full"
+              onClick={() => patch({ status: 'done', doneAt: new Date().toISOString() })}
+            >
+              <Icon name="check" size={17} />
+              Job done
+            </button>
+          ) : (
+            <p className="bookingcard-wait">
+              Pickup confirmed. You'll be able to rate {driverFirst} once the trip's done.
+            </p>
+          )}
+
+          {canCancel && (
+            <button className="btn ghost full" onClick={cancelPickup}>
+              Cancel pickup
+            </button>
+          )}
+        </div>
+      )}
+
+      {done && (
+        <div className="bookingcard-action">
+          {myRating ? (
+            <div className="rated">
+              <Icon name="check" size={16} />
+              <span>You rated {target}</span>
+              <Stars value={myRating} size={16} />
+            </div>
+          ) : (
+            <RatingInput target={target} onSubmit={(v) => patch({ [myKey]: v })} />
+          )}
+
+          {isDriver && b.driverRating && (
+            <div className="rated got">
+              <span>{custName} rated you</span>
+              <Stars value={b.driverRating} size={16} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Before/after camera buttons — driver only. Each opens the phone camera (or a
+// file picker in the browser); the handler tags the shot with live location.
+function PhotoRow({ booking, onPhoto }) {
+  return (
+    <div className="photorow">
+      <PhotoButton
+        label="Loading photo"
+        done={booking.photoBefore}
+        onPick={(f) => onPhoto(booking, 'before', f)}
+      />
+      <PhotoButton
+        label="Delivery photo"
+        done={booking.photoAfter}
+        onPick={(f) => onPhoto(booking, 'after', f)}
+      />
+    </div>
+  )
+}
+
+function PhotoButton({ label, done, onPick }) {
+  const ref = useRef(null)
+  return (
+    <>
+      <button
+        type="button"
+        className={done ? 'photobtn done' : 'photobtn'}
+        onClick={() => ref.current?.click()}
+      >
+        <Icon name={done ? 'check' : 'camera'} size={16} />
+        {done ? `Retake ${label.toLowerCase()}` : label}
+      </button>
+      <input
+        ref={ref}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        hidden
+        onChange={(e) => {
+          const f = e.target.files?.[0]
+          if (f) onPick(f)
+          e.target.value = ''
+        }}
+      />
+    </>
+  )
+}
+
+// A load photo in the chat log — image plus where and when it was taken.
+function PhotoMessage({ m, mine }) {
+  const p = m.photo || {}
+  const after = p.phase === 'after'
+  return (
+    <div className={`msg photo ${mine ? 'mine' : 'theirs'}`}>
+      <div className="photomsg">
+        <span className={`photomsg-tag ${after ? 'after' : 'before'}`}>
+          {after ? 'After — delivered' : 'Before — loaded'}
+        </span>
+        <img src={p.src} alt={after ? 'Delivery photo' : 'Loading photo'} />
+        <span className="photomsg-loc">
+          <Icon name="pin" size={13} />
+          {p.place || 'Location unavailable'} · {timeLabel(p.at)}
+        </span>
+      </div>
+      <span>{timeLabel(m.at)}</span>
+    </div>
+  )
+}
+
+const Row = ({ label, value }) => (
+  <div className="bookingcard-row">
+    <span>{label}</span>
+    <strong>{value}</strong>
+  </div>
+)
+
+// Pick a score, then submit — kept as two steps so a stray tap can't fire off a
+// rating you can't take back.
+function RatingInput({ target, onSubmit }) {
+  const [pick, setPick] = useState(0)
+  return (
+    <div className="ratinginput">
+      <span className="ratinginput-label">How was {target}?</span>
+      <StarPicker value={pick} onChange={setPick} />
+      <button className="btn primary full" disabled={!pick} onClick={() => onSubmit(pick)}>
+        Submit rating
+      </button>
+    </div>
+  )
+}
+
+// Tap anywhere across the row; the left half of a star is a half-point. Hovering
+// previews the score before it's committed.
+function StarPicker({ value, onChange }) {
+  const [hover, setHover] = useState(0)
+  const shown = hover || value
+  const steps = [0.5, 1, 1.5, 2, 2.5, 3, 3.5, 4, 4.5, 5]
+  return (
+    <div className="starpick" onMouseLeave={() => setHover(0)}>
+      <Stars value={shown} size={34} />
+      <div className="starpick-hits">
+        {steps.map((v) => (
+          <button
+            key={v}
+            type="button"
+            aria-label={`${v} star${v === 1 ? '' : 's'}`}
+            onMouseEnter={() => setHover(v)}
+            onClick={() => onChange(v)}
+          />
+        ))}
+      </div>
+      <span className="starpick-value">{shown ? shown.toFixed(1) : '—'}</span>
     </div>
   )
 }

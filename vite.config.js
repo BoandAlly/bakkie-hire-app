@@ -13,7 +13,7 @@ const secure = process.env.HTTPS === '1'
 export default defineConfig({
   plugins: [react(), ...(secure ? [basicSsl()] : [])],
   server: {
-    port: 5199,
+    port: Number(process.env.PORT) || 5199,
     host: true,
   },
 })
