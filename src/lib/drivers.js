@@ -18,12 +18,32 @@ export const DOCS = [
   { id: 'reg', label: 'Vehicle registration', hint: 'The papers for the vehicle you listed.' },
 ]
 
+// A ready-made driver so the app can be opened and used without signing up first.
+// Its phone matches the seeded Toyota Hilux (l1), so it already owns a vehicle.
+// One tap on "Use the demo account" signs in as this; the session then persists
+// until the driver manually signs out.
+export const DEMO_DRIVER_EMAIL = 'demo@bakkie.co'
+
+const SEED_DRIVERS = {
+  [DEMO_DRIVER_EMAIL]: {
+    name: 'Sipho Ndlovu',
+    email: DEMO_DRIVER_EMAIL,
+    phone: '082 445 1190',
+    password: 'demo',
+    docs: { idDoc: true, licence: true, reg: true },
+    verified: true,
+    joined: '2025-11',
+  },
+}
+
 export function loadDrivers() {
   try {
     const raw = localStorage.getItem(KEY)
-    return raw ? JSON.parse(raw) : {}
+    const stored = raw ? JSON.parse(raw) : {}
+    // The demo account is always present; a real account with the same email wins.
+    return { ...SEED_DRIVERS, ...stored }
   } catch {
-    return {}
+    return { ...SEED_DRIVERS }
   }
 }
 

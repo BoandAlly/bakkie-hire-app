@@ -13,6 +13,7 @@ import Icon from '../components/Icon.jsx'
 export default function CustomerAuth({
   onSignIn,
   onSignUp,
+  onDemo,
   onAuthed,
   onBack,
   startMode = 'signin',
@@ -164,6 +165,23 @@ export default function CustomerAuth({
               </button>
             </p>
           </>
+        )}
+
+        {onDemo && (
+          <div className="demo-cta">
+            <span className="demo-or">or just try it</span>
+            <button
+              type="button"
+              className="btn secondary full"
+              onClick={() => {
+                onDemo()
+                onAuthed()
+              }}
+            >
+              <Icon name="play" size={15} />
+              Use the demo account
+            </button>
+          </div>
         )}
       </div>
     </div>

@@ -10,7 +10,7 @@ import Icon from '../components/Icon.jsx'
 // for a new one. onSignIn / onSignUp return an error code (or null on success)
 // so this screen can explain exactly what went wrong.
 
-export default function DriverAuth({ onSignIn, onSignUp, onBack }) {
+export default function DriverAuth({ onSignIn, onSignUp, onDemo, onBack }) {
   const [mode, setMode] = useState('signin')
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
@@ -172,6 +172,16 @@ export default function DriverAuth({ onSignIn, onSignUp, onBack }) {
               </button>
             </p>
           </>
+        )}
+
+        {onDemo && (
+          <div className="demo-cta">
+            <span className="demo-or">or just try it</span>
+            <button type="button" className="btn secondary full" onClick={onDemo}>
+              <Icon name="play" size={15} />
+              Use the demo driver account
+            </button>
+          </div>
         )}
       </div>
     </div>

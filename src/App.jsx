@@ -20,12 +20,13 @@ import {
   samePhone,
   listingsForPhone,
 } from './lib/session.js'
-import { loadDrivers, saveDrivers, driverFor, blankDriver } from './lib/drivers.js'
+import { loadDrivers, saveDrivers, driverFor, blankDriver, DEMO_DRIVER_EMAIL } from './lib/drivers.js'
 import {
   loadCustomers,
   saveCustomers,
   customerFor,
   blankCustomer,
+  DEMO_CUSTOMER_EMAIL,
 } from './lib/customers.js'
 import { useLocation } from './lib/geo.js'
 import BottomNav from './components/BottomNav.jsx'
@@ -157,6 +158,13 @@ export default function App() {
     return null
   }
 
+  // One-tap sign in to the always-present demo driver. The session persists, so
+  // this is a one-time thing until they use the Sign out button.
+  const signInDemo = () => {
+    setSession({ role: 'driver', driverEmail: DEMO_DRIVER_EMAIL })
+    go({ name: 'enquiries' })
+  }
+
   const signOut = () => {
     clearSession()
     setSession({ role: null, driverEmail: null })
@@ -188,6 +196,9 @@ export default function App() {
     setSession((s) => ({ ...s, customerEmail: key }))
     return null
   }
+
+  // One-tap sign in to the demo customer (mirror of signInDemo for the driver).
+  const customerDemo = () => setSession((s) => ({ ...s, customerEmail: DEMO_CUSTOMER_EMAIL }))
 
   const customerSignOut = () => {
     setSession((s) => ({ ...s, customerEmail: null }))
@@ -338,7 +349,7 @@ export default function App() {
   if (session.role === 'driver' && !driver) {
     return (
       <div className="app">
-        <DriverAuth onSignIn={signIn} onSignUp={signUp} onBack={switchRole} />
+        <DriverAuth onSignIn={signIn} onSignUp={signUp} onDemo={signInDemo} onBack={switchRole} />
       </div>
     )
   }
@@ -545,6 +556,7 @@ export default function App() {
             reason={view.reason}
             onSignIn={customerSignIn}
             onSignUp={customerSignUp}
+            onDemo={customerDemo}
             onAuthed={() => go(view.next ?? { name: 'account' })}
             onBack={() => go(view.back ?? { name: 'explore' })}
           />

@@ -9,12 +9,27 @@ import { normaliseEmail } from './session.js'
 
 const KEY = 'bakkie.customers.v1'
 
+// A ready-made customer, mirror of the demo driver, so the client side can also
+// be used (messaging drivers) without signing up. Signed in with one tap; the
+// session persists until they sign out.
+export const DEMO_CUSTOMER_EMAIL = 'me@bakkie.co'
+
+const SEED_CUSTOMERS = {
+  [DEMO_CUSTOMER_EMAIL]: {
+    name: 'Thandi (demo)',
+    email: DEMO_CUSTOMER_EMAIL,
+    password: 'demo',
+    joined: '2025-11',
+  },
+}
+
 export function loadCustomers() {
   try {
     const raw = localStorage.getItem(KEY)
-    return raw ? JSON.parse(raw) : {}
+    const stored = raw ? JSON.parse(raw) : {}
+    return { ...SEED_CUSTOMERS, ...stored }
   } catch {
-    return {}
+    return { ...SEED_CUSTOMERS }
   }
 }
 
