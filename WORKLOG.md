@@ -7,6 +7,13 @@ When you (or Claude) make a meaningful change, add a short entry here before pus
 
 ---
 
+## 2026-09-03 — Megan
+Deleted the `friend-feature` branch. **From now on we only use the `main` branch — please put all your work on `main`.**
+- Don't create or push other branches. Just `main`, so we both stay on the same page.
+- The deleted branch had nothing unique on it (it was just an older copy of `main`), so nothing was lost.
+- **If your side still shows `friend-feature`, run `git fetch --prune` (or `git pull`) to clear it.**
+- Heads up: the backend that was built locally hasn't landed on GitHub yet — GitHub still only has the app with no backend. When you push the backend, put it on `main` and tell Megan so it can be pulled and turned into a test APK.
+
 ## 2026-09-02 — Megan (later that day)
 Added a real backend so two phones can finally see each other's data. Until now
 every phone kept its own private copy, so you could never actually test a
@@ -52,6 +59,7 @@ Still to do / know about:
 - "Reset demo data" only clears the phone, not the backend, so data comes back
   on the next load.
 - Public star ratings still show the frozen seed number, not real ratings.
+
 
 ## 2026-09-02 — Megan
 Set up collaboration so two of us can work on this app together.
