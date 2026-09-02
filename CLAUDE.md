@@ -34,3 +34,38 @@ Keep entries plain and friendly — the other person may not be technical, and t
 - The database policies are wide open for testing. Real auth must replace them
   before real users — see the warning at the top of `supabase/schema.sql`.
 - Full collaboration guide for humans: `COLLABORATION.md`.
+
+## Setting up on a second machine (Daniel)
+
+The app runs with no setup at all — `npm install`, `npm run dev`, done. That
+gives you the single-device version: everything saves to your own browser and
+nothing is shared. Fine for working on screens and layout.
+
+To see the same data as Megan's phone, you need the backend switched on:
+
+1. `cp .env.example .env`
+2. Ask Megan for the two values (the Supabase project URL and the key) and paste
+   them in. **They are deliberately not in this repo** — the repo is public, and
+   while the database policies are still wide open for testing, anyone who found
+   the key could read and write everything in it.
+3. `npm run dev` again — Vite only reads `.env` at startup, so a running server
+   will not pick it up.
+
+`.env` is git-ignored. Never commit it.
+
+To check it is actually on: with the backend configured the app fetches from
+`supabase.co` on load. With it off, Supabase is compiled out of the bundle
+entirely, so there is nothing to see in the network tab.
+
+### Known rough edges — please read before spending time on these
+
+- **Live push does not work yet.** Supabase's realtime WebSocket rejects the
+  new-style `sb_publishable_` key because it wants a JWT. Until the project's
+  legacy anon key is available, the app re-reads every 2.5 seconds instead, so
+  the other phone updates within a few seconds rather than instantly. Details in
+  `WORKLOG.md`.
+- **Do not test with photos.** They are stored at full camera resolution, which
+  overflows the browser's storage limit; the save fails silently and the listing
+  is lost on reload. Needs shrinking before it is safe to use.
+- **Star ratings on the browse cards are fake.** They are still the frozen seed
+  numbers, not the ratings customers actually give.
