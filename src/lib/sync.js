@@ -54,6 +54,12 @@ const messageToRow = (threadId, m) => ({
   booking: m.booking ?? null,
 })
 
+// The single definition of a row's shape. Both the pull side (recording what
+// the backend already holds) and the push side build rows through these, so a
+// signature can never differ just because the two sides spelled it differently.
+const listingRow = (l) => ({ id: String(l.id), data: l })
+const keyedRow = (field, key, data) => ({ [field]: key, data })
+
 const threadToRow = (t) => ({
   id: t.id,
   listing_id: t.listingId,
@@ -116,18 +122,24 @@ export async function pullAll() {
 
     // Messages grouped under their thread, oldest first. The ISO strings sort
     // correctly as text because they are all UTC from toISOString().
+    // What gets remembered is the row as PUSH would build it, not the row the
+    // database handed back. The database adds `updated_at`, which push never
+    // sends; remembering the raw row would make every signature compare false,
+    // so each pull would rewrite everything, and each rewrite would fire more
+    // change events — a loop. Round-tripping through the app shape keeps both
+    // sides byte-identical by construction.
     const byThread = new Map()
     for (const r of messages.data) {
-      remember('messages', r.id, r)
+      remember('messages', r.id, messageToRow(r.thread_id, rowToMessage(r)))
       if (!byThread.has(r.thread_id)) byThread.set(r.thread_id, [])
       byThread.get(r.thread_id).push(r)
     }
     for (const list of byThread.values()) list.sort((a, b) => (a.sent_at < b.sent_at ? -1 : 1))
 
-    for (const r of listings.data) remember('listings', r.id, r)
-    for (const r of drivers.data) remember('drivers', r.email, r)
-    for (const r of customers.data) remember('customers', r.email, r)
-    for (const r of threads.data) remember('threads', r.id, r)
+    for (const r of listings.data) remember('listings', r.id, listingRow(r.data))
+    for (const r of drivers.data) remember('drivers', r.email, keyedRow('email', r.email, r.data))
+    for (const r of customers.data) remember('customers', r.email, keyedRow('email', r.email, r.data))
+    for (const r of threads.data) remember('threads', r.id, threadToRow(rowToThread(r, [])))
 
     const keyed = (rows, k) => Object.fromEntries(rows.map((r) => [r[k], r.data]))
 
@@ -151,10 +163,12 @@ export async function pullAll() {
  */
 export function subscribe(onChange) {
   if (!syncEnabled) return () => {}
+  // Short enough to feel immediate, long enough that one action touching two
+  // tables (a new thread plus its first message) still costs a single read.
   let timer = null
   const schedule = () => {
     clearTimeout(timer)
-    timer = setTimeout(onChange, 250)
+    timer = setTimeout(onChange, 60)
   }
 
   const channel = supabase.channel('bakkie-sync')
@@ -163,8 +177,21 @@ export function subscribe(onChange) {
   }
   channel.subscribe()
 
+  // Backstop poll. Push delivery through `postgres_changes` has been unreliable
+  // on this project — changes were arriving on a ~30s cycle instead of
+  // immediately — and a chat that takes half a minute to show a reply is
+  // useless for testing. Polling puts a hard ceiling on how stale a screen can
+  // be, and costs one small read per interval per phone.
+  //
+  // When push delivery IS working the poll is nearly free: `pullAll` records
+  // what it read, so a poll that finds nothing new writes nothing and re-renders
+  // nothing. Worth revisiting once realtime is confirmed working.
+  const POLL_MS = 2500
+  const poll = setInterval(onChange, POLL_MS)
+
   return () => {
     clearTimeout(timer)
+    clearInterval(poll)
     supabase.removeChannel(channel)
   }
 }
@@ -208,20 +235,19 @@ async function deleteMissing(table, liveIds, idField) {
 
 export async function pushListings(listings) {
   if (!syncEnabled) return
-  const rows = listings.map((l) => ({ id: String(l.id), data: l }))
-  await upsertChanged('listings', rows, 'id')
+  await upsertChanged('listings', listings.map(listingRow), 'id')
   await deleteMissing('listings', new Set(listings.map((l) => String(l.id))), 'id')
 }
 
 export async function pushDrivers(drivers) {
   if (!syncEnabled) return
-  const rows = Object.entries(drivers).map(([email, data]) => ({ email, data }))
+  const rows = Object.entries(drivers).map(([email, data]) => keyedRow('email', email, data))
   await upsertChanged('drivers', rows, 'email')
 }
 
 export async function pushCustomers(customers) {
   if (!syncEnabled) return
-  const rows = Object.entries(customers).map(([email, data]) => ({ email, data }))
+  const rows = Object.entries(customers).map(([email, data]) => keyedRow('email', email, data))
   await upsertChanged('customers', rows, 'email')
 }
 

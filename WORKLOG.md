@@ -28,6 +28,21 @@ customer booking a driver.
   and a message added from outside appeared in the app in about 3 seconds
   without a refresh.
 
+**Live push is not working yet — read this before debugging it.** Supabase's
+realtime WebSocket refuses the connection with the new-style `sb_publishable_`
+key (browser console: "WebSocket is closed before the connection is
+established"). Realtime wants a JWT, and the publishable keys are not JWTs. The
+fix is to use the project's **legacy anon key** instead, but that key was
+unavailable while writing this — the dashboard says "JWT secret is being
+updated" on this new project. Once it appears under Settings → API Keys →
+"Legacy anon, service_role", put it in `VITE_SUPABASE_ANON_KEY` and live push
+should start working.
+
+Until then the app falls back to re-reading every 2.5 seconds, so the other
+phone updates within a few seconds rather than instantly. Note that phones and
+browsers slow those timers down when the app is in the background, so keep the
+app open on both phones while testing.
+
 Still to do / know about:
 - **Photos are not safe to use yet.** They're saved at full camera resolution,
   which overflows the phone's storage limit and now also means huge uploads.

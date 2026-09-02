@@ -88,6 +88,9 @@ export default function App() {
   const latest = useRef(null)
   latest.current = { listings, threads, drivers, customers }
 
+  // Snapshot of the backend as last applied, so an unchanged poll does nothing.
+  const lastApplied = useRef('')
+
   useEffect(() => {
     if (!syncEnabled) return
     let alive = true
@@ -95,6 +98,14 @@ export default function App() {
     const refresh = async () => {
       const remote = await pullAll()
       if (!alive || !remote) return
+
+      // The backstop poll runs on a timer whether or not anything changed, so
+      // bail out when the backend looks exactly as it did last time. Without
+      // this every poll would hand React new array identities and re-render the
+      // whole app a few times a second for no reason.
+      const stamp = JSON.stringify(remote)
+      if (stamp === lastApplied.current) return
+      lastApplied.current = stamp
 
       if (primed.current) {
         // Guarded against empty: a pull racing the very first push would
