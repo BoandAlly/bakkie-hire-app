@@ -29,7 +29,26 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      # Without these the build still SUCCEEDS — Vite just compiles the backend
+      # out, and you get an APK that installs fine and silently never syncs.
+      # Failing here instead makes that impossible to ship by accident.
+      - name: Check backend config is present
+        env:
+          URL: ${{ secrets.VITE_SUPABASE_URL }}
+          KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::error::Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY."
+            echo "Add them under Settings -> Secrets and variables -> Actions."
+            echo "Without them the APK builds but has no backend, so phones will not sync."
+            exit 1
+          fi
+          echo "Backend config present."
+
       - name: Build web assets
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
 
       - name: Sync Capacitor

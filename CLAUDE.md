@@ -21,6 +21,16 @@ Keep entries plain and friendly — the other person may not be technical, and t
 ## How the app works (quick orientation)
 
 - React + Vite app, wrapped with Capacitor to run as an Android APK.
-- No backend. All data lives on the device in localStorage — see `src/lib/storage.js`.
-  Swapping in a real backend later means replacing that one file, nothing else.
+- Data lives on the device in localStorage (`src/lib/storage.js`, `threads.js`,
+  `drivers.js`, `customers.js`) AND, when a backend is configured, syncs to
+  Supabase so two phones share it — see `src/lib/sync.js` and `supabase/schema.sql`.
+- The backend is optional by design. With no `.env` the app is exactly the
+  old single-device prototype, and Vite compiles Supabase out of the bundle.
+  To run against the backend, copy `.env.example` to `.env` and fill it in.
+- The APK gets those values from GitHub repository secrets — see the build
+  workflow. If they're missing the build fails on purpose, because an APK
+  without them looks fine but never syncs.
+- Who is signed in is deliberately NOT synced; that stays per-device.
+- The database policies are wide open for testing. Real auth must replace them
+  before real users — see the warning at the top of `supabase/schema.sql`.
 - Full collaboration guide for humans: `COLLABORATION.md`.

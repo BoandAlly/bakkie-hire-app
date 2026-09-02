@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { SEED_LISTINGS } from './data/listings.js'
 import { loadListings, saveListings, resetAll } from './lib/storage.js'
 import {
@@ -29,6 +29,16 @@ import {
   DEMO_CUSTOMER_EMAIL,
 } from './lib/customers.js'
 import { useLocation } from './lib/geo.js'
+import {
+  syncEnabled,
+  pullAll,
+  subscribe,
+  mergeThreads,
+  pushListings,
+  pushThreads,
+  pushDrivers,
+  pushCustomers,
+} from './lib/sync.js'
 import BottomNav from './components/BottomNav.jsx'
 import AuthGate from './components/AuthGate.jsx'
 import RoleChooser from './pages/RoleChooser.jsx'
@@ -63,10 +73,85 @@ export default function App() {
 
   const location = useLocation()
 
-  useEffect(() => saveListings(listings), [listings])
-  useEffect(() => saveThreads(threads), [threads])
-  useEffect(() => saveDrivers(drivers), [drivers])
-  useEffect(() => saveCustomers(customers), [customers])
+  // Sync is off unless a Supabase project is configured (see .env.example), in
+  // which case the app behaves exactly as it always did — one device, one copy.
+  // With it on, the backend is the shared truth and this phone is one view onto
+  // it. Nothing is pushed until the first read has landed, so a stale local copy
+  // can never overwrite what the other phone already put there.
+  const primed = useRef(false)
+
+  // The save effects below only fire when state CHANGES, and they all run once
+  // on mount — before the first read has come back. On a fresh database that
+  // means nothing would ever be uploaded, because after priming there is no
+  // further change to react to. This ref lets the priming step push what the
+  // device already holds, which is what seeds an empty backend.
+  const latest = useRef(null)
+  latest.current = { listings, threads, drivers, customers }
+
+  useEffect(() => {
+    if (!syncEnabled) return
+    let alive = true
+
+    const refresh = async () => {
+      const remote = await pullAll()
+      if (!alive || !remote) return
+
+      if (primed.current) {
+        // Guarded against empty: a pull racing the very first push would
+        // otherwise wipe the seeded vehicles off both phones.
+        if (remote.listings.length) setListings(remote.listings)
+        setThreads(remote.threads)
+      } else {
+        // First read keeps anything this device has that the backend lacks —
+        // the seeded vehicles on a fresh database, threads made before setup.
+        setListings((local) => (remote.listings.length ? remote.listings : local))
+        setThreads((local) => mergeThreads(local, remote.threads))
+        primed.current = true
+
+        // Upload what this device already has. Rows the backend just gave us
+        // are skipped — pullAll recorded their signatures — so on a database
+        // that already has data this writes nothing.
+        const mine = latest.current
+        pushListings(mine.listings)
+        pushThreads(mine.threads)
+        pushDrivers(mine.drivers)
+        pushCustomers(mine.customers)
+      }
+      // Accounts are only ever added, so these always merge both ways.
+      setDrivers((local) => ({ ...local, ...remote.drivers }))
+      setCustomers((local) => ({ ...local, ...remote.customers }))
+    }
+
+    refresh()
+    const stop = subscribe(refresh)
+    return () => {
+      alive = false
+      stop()
+    }
+  }, [])
+
+  useEffect(() => {
+    saveListings(listings)
+    if (primed.current) pushListings(listings)
+  }, [listings])
+
+  useEffect(() => {
+    saveThreads(threads)
+    if (primed.current) pushThreads(threads)
+  }, [threads])
+
+  useEffect(() => {
+    saveDrivers(drivers)
+    if (primed.current) pushDrivers(drivers)
+  }, [drivers])
+
+  useEffect(() => {
+    saveCustomers(customers)
+    if (primed.current) pushCustomers(customers)
+  }, [customers])
+
+  // Deliberately NOT synced: who is signed in is per-device. You on one phone
+  // and your friend on the other must stay two different people.
   useEffect(() => saveSession(session), [session])
 
   const go = (next) => {

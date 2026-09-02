@@ -16,3 +16,9 @@ android/app/src/main/assets/public/
 .DS_Store
 Thumbs.db
 .env
+
+# Single-file build for the phone/Artifact preview
+dist-artifact/
+
+# Local backend credentials
+.env
