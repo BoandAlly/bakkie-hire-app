@@ -7,6 +7,37 @@ When you (or Claude) make a meaningful change, add a short entry here before pus
 
 ---
 
+## 2026-09-03 — Megan (branch `my-changes`, not on GitHub yet)
+Working through the new product spec. `SPEC.md` has the whole thing, with five
+items cut because they need the platform to handle money, which contradicts what
+the app promises drivers — the reasons are at the bottom of that file.
+
+- **Real road distances.** Quotes used a straight line padded by 35%, wrong in
+  both directions: Durban CBD to Richards Bay was priced at 209km against a real
+  177km, and Hillcrest to Amanzimtoti at 43km when it is really 49km, so drivers
+  were being underpaid on that route. All 676 suburb pairs are measured once from
+  OpenStreetMap. No maps API, no key, no cost, works offline. After adding a
+  suburb to `places.js`, run `npm run build:distances`.
+- **Photos no longer destroy listings.** They were kept at full camera size,
+  which overflowed the phone's storage limit — and the failure was silent, so a
+  listing looked saved and was gone on next open. Now shrunk to 1280px (about
+  87% smaller), and a refused save says so instead of losing the work quietly.
+- **Star ratings are real.** The browse cards showed the frozen seed number, so
+  a driver rated 2 stars still advertised 4.9. A listing shows its real average
+  once it has one; until then it keeps its starting score, greyed and labelled
+  "No ratings yet".
+- **The customer says what they're moving**, when, and whether they're travelling
+  with it — and can't send until they confirm it's accurate.
+- **Customers choose how far to look** (any / 5 / 10 / 25 / 50 km). The spec
+  wanted 10km as the default, but that shows 2 of our 12 listings, so it opens
+  unrestricted.
+- **Drivers say when they work** — an "available now" switch, plus the ordinary
+  week, Mon-Sat 7 to 5 unless changed.
+
+Still open: push notifications to available drivers, per-minute rates, and
+driver document upload. Until that last one exists, the "ID & licence checked"
+badge on every listing is claiming something nothing actually checks.
+
 ## 2026-09-03 — Megan
 Deleted the `friend-feature` branch. **From now on we only use the `main` branch — please put all your work on `main`.**
 - Don't create or push other branches. Just `main`, so we both stay on the same page.
