@@ -1553,3 +1553,40 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
   display: block; font-style: normal; font-size: 12.5px; color: var(--ink-3);
 }
 .fieldhint { display: block; margin-top: 5px; font-style: normal; font-size: 12.5px; color: var(--ink-3); }
+
+/* Address box with type-ahead */
+.addressfield { position: relative; }
+.addressfield-box {
+  display: flex; align-items: center; gap: 9px;
+  min-height: 50px; padding: 0 10px 0 12px;
+  border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--surface);
+}
+.addressfield-box:focus-within { border-color: var(--blue); }
+.addressfield-box input {
+  flex: 1; min-width: 0; height: 48px;
+  border: 0; background: none; outline: none; font-size: 15.5px; color: var(--ink);
+}
+.addressfield-box input::placeholder { color: var(--ink-4); }
+
+.addressfield-list {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 30;
+  max-height: 300px; overflow-y: auto;
+  border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--surface); box-shadow: var(--shadow);
+}
+.addressfield-list li + li { border-top: 1px solid var(--border); }
+.addressfield-list button {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 11px 13px; border: 0; background: none; text-align: left; color: var(--ink);
+}
+.addressfield-list button:hover { background: var(--muted); }
+.addressfield-list strong { display: block; font-size: 14.5px; font-weight: 600; }
+.addressfield-list em {
+  display: block; margin-top: 1px; font-style: normal;
+  font-size: 12px; font-weight: 600; color: var(--blue);
+}
+.addressfield-busy, .addressfield-empty {
+  padding: 11px 13px; font-size: 13.5px; color: var(--ink-3);
+}
+.addressfield-empty { padding-left: 2px; }

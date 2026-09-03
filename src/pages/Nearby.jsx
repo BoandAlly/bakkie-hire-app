@@ -1,9 +1,11 @@
-import { useMemo, useState } from 'react'
-import { placeByName, PLACES, routeDistanceKm } from '../data/places.js'
+import { useEffect, useMemo, useState } from 'react'
+import { placeByName } from '../data/places.js'
 import { VEHICLE_CLASSES, classById, VehicleSilhouette } from '../data/vehicleClasses.jsx'
 import { rateLabel, quote, rand } from '../lib/pricing.js'
 import { roadKm } from '../lib/geo.js'
 import Icon, { StarIcon } from '../components/Icon.jsx'
+import AddressField from '../components/AddressField.jsx'
+import { roadDistanceBetween } from '../lib/geocode.js'
 
 // Everything within reach, sorted however the customer wants to look at it.
 
@@ -43,11 +45,21 @@ const RADII = [
 // with. Kept on the device because it's almost always the same move being
 // quoted twice, and retyping it is the annoying part.
 const TRIP_KEY = 'bakkie.trip.v1'
-const BLANK_TRIP = { pickup: '', dropoff: '' }
+const BLANK_TRIP = { pickup: null, dropoff: null }
+
+// A leg is {label, lat, lng, kind}. Anything else — including trips saved
+// before addresses existed, when these were plain suburb names — is dropped
+// rather than half-read, so an old value can't produce a nonsense quote.
+const validLeg = (v) =>
+  v && typeof v === 'object' && typeof v.label === 'string' &&
+  Number.isFinite(v.lat) && Number.isFinite(v.lng)
+    ? v
+    : null
 
 function loadTrip() {
   try {
-    return { ...BLANK_TRIP, ...(JSON.parse(localStorage.getItem(TRIP_KEY)) ?? {}) }
+    const saved = JSON.parse(localStorage.getItem(TRIP_KEY)) ?? {}
+    return { pickup: validLeg(saved.pickup), dropoff: validLeg(saved.dropoff) }
   } catch {
     return { ...BLANK_TRIP }
   }
@@ -74,8 +86,31 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
   // Cheapest-first is the useful default once we know the actual job.
   const [sort, setSort] = useState('price')
 
-  const tripSet = Boolean(trip.pickup && trip.dropoff && trip.pickup !== trip.dropoff)
-  const tripKm = tripSet ? routeDistanceKm(trip.pickup, trip.dropoff) : null
+  const tripSet = Boolean(
+    trip.pickup && trip.dropoff && trip.pickup.label !== trip.dropoff.label,
+  )
+
+  // Distance is a network call now that either end can be a street address, so
+  // it lands after render rather than during it. Null means "not known yet" —
+  // the screen says so instead of showing a wrong number.
+  const [tripKm, setTripKm] = useState(null)
+
+  useEffect(() => {
+    if (!tripSet) {
+      setTripKm(null)
+      return
+    }
+    let alive = true
+    const ac = new AbortController()
+    roadDistanceBetween(trip.pickup, trip.dropoff, { signal: ac.signal }).then((km) => {
+      if (alive) setTripKm(km)
+    })
+    return () => {
+      alive = false
+      ac.abort()
+    }
+    // Coordinates, not object identity — a re-render must not re-fetch.
+  }, [tripSet, trip.pickup?.lat, trip.pickup?.lng, trip.dropoff?.lat, trip.dropoff?.lng])
 
   const setLeg = (patch) => {
     const next = { ...trip, ...patch }
@@ -164,24 +199,18 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
 
   const tripPicker = (
     <div className="trippicker">
-      <label className="field">
-        <span>Pick-up</span>
-        <select value={trip.pickup} onChange={(e) => setLeg({ pickup: e.target.value })}>
-          <option value="">Where from?</option>
-          {PLACES.map((p) => (
-            <option key={p.name}>{p.name}</option>
-          ))}
-        </select>
-      </label>
-      <label className="field">
-        <span>Drop-off</span>
-        <select value={trip.dropoff} onChange={(e) => setLeg({ dropoff: e.target.value })}>
-          <option value="">Where to?</option>
-          {PLACES.map((p) => (
-            <option key={p.name}>{p.name}</option>
-          ))}
-        </select>
-      </label>
+      <AddressField
+        label="Pick-up"
+        value={trip.pickup}
+        onChange={(p) => setLeg({ pickup: p })}
+        placeholder="Street, place or suburb"
+      />
+      <AddressField
+        label="Drop-off"
+        value={trip.dropoff}
+        onChange={(p) => setLeg({ dropoff: p })}
+        placeholder="Street, place or suburb"
+      />
     </div>
   )
 
@@ -199,8 +228,8 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
 
         {tripPicker}
 
-        {trip.pickup && trip.dropoff && trip.pickup === trip.dropoff && (
-          <p className="blockhint error">Pick two different areas.</p>
+        {trip.pickup && trip.dropoff && trip.pickup.label === trip.dropoff.label && (
+          <p className="blockhint error">Pick two different places.</p>
         )}
 
         <button
@@ -209,7 +238,11 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
           onClick={() => setEditingTrip(false)}
         >
           <Icon name="search" size={17} />
-          {tripSet ? `Show me drivers · ${tripKm} km` : 'Show me drivers'}
+          {!tripSet
+            ? 'Show me drivers'
+            : tripKm == null
+              ? 'Measuring the route…'
+              : `Show me drivers · ${tripKm} km`}
         </button>
 
         {editingTrip && (
@@ -237,9 +270,13 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         <Icon name="pin" size={17} />
         <span className="tripbar-route">
           <strong>
-            {trip.pickup} &rarr; {trip.dropoff}
+            {trip.pickup.label} &rarr; {trip.dropoff.label}
           </strong>
-          <em>{tripKm} km · prices below are for this trip</em>
+          <em>
+            {tripKm == null
+              ? 'Measuring the route…'
+              : `${tripKm} km · prices below are for this trip`}
+          </em>
         </span>
         <Icon name="chevron" size={15} className="dim" />
       </button>
