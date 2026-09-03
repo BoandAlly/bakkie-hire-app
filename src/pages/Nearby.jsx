@@ -27,6 +27,17 @@ const PAYLOADS = [
   { kg: 4000, label: '4 ton+' },
 ]
 
+// How far the customer is willing to look. The spec suggested a 10 km default,
+// but across greater Durban that hides most of the market and reads as an empty
+// app, so it opens unrestricted and narrows on request.
+const RADII = [
+  { km: 0, label: 'Any distance' },
+  { km: 5, label: 'Within 5 km' },
+  { km: 10, label: 'Within 10 km' },
+  { km: 25, label: 'Within 25 km' },
+  { km: 50, label: 'Within 50 km' },
+]
+
 export default function Nearby({ listings, coords, areaName, onOpen, onChangeArea, ratings = {} }) {
   const [query, setQuery] = useState('')
   const [classFilter, setClassFilter] = useState('')
@@ -34,6 +45,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
   const [insuredOnly, setInsuredOnly] = useState(false)
   const [helpersOnly, setHelpersOnly] = useState(false)
   const [minPayload, setMinPayload] = useState(0)
+  const [radiusKm, setRadiusKm] = useState(0)
   const [sort, setSort] = useState('near')
 
   const rows = useMemo(() => {
@@ -51,6 +63,8 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
       })
       // An operator who won't travel this far isn't available to this customer.
       .filter(({ listing, km }) => km != null && km <= listing.serviceRadiusKm)
+      // ...and inside the distance the customer asked for.
+      .filter(({ km }) => (radiusKm ? km <= radiusKm : true))
       .filter(({ listing }) => (classFilter ? listing.vehicleClass === classFilter : true))
       .filter(({ listing }) => (roundTripOnly ? listing.roundTrip : true))
       .filter(({ listing }) => (insuredOnly ? listing.gitInsured : true))
@@ -72,7 +86,19 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
       }
     })
     return scored
-  }, [listings, coords, query, classFilter, roundTripOnly, insuredOnly, helpersOnly, minPayload, sort])
+  }, [
+    listings,
+    coords,
+    query,
+    classFilter,
+    roundTripOnly,
+    insuredOnly,
+    helpersOnly,
+    minPayload,
+    radiusKm,
+    ratings,
+    sort,
+  ])
 
   const filtersActive =
     !!query ||
@@ -81,6 +107,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     insuredOnly ||
     helpersOnly ||
     minPayload > 0 ||
+    radiusKm > 0 ||
     sort !== 'near'
 
   const clearAll = () => {
@@ -90,6 +117,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     setInsuredOnly(false)
     setHelpersOnly(false)
     setMinPayload(0)
+    setRadiusKm(0)
     setSort('near')
   }
 
@@ -178,6 +206,20 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
           >
             {p.kg > 0 && <Icon name="box" size={15} />}
             {p.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="chiprow">
+        {RADII.map((r) => (
+          <button
+            key={r.km}
+            className={radiusKm === r.km ? 'chip on' : 'chip'}
+            onClick={() => setRadiusKm(r.km)}
+            aria-pressed={radiusKm === r.km}
+          >
+            {r.km > 0 && <Icon name="pin" size={15} />}
+            {r.label}
           </button>
         ))}
       </div>
