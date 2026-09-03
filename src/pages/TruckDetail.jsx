@@ -106,6 +106,10 @@ export default function TruckDetail({
             {guide && <em>about {rand(guide.total)} for a short 10 km move</em>}
           </span>
         </div>
+        <p className="est-note">
+          <Icon name="wallet" size={14} />
+          Prices shown are estimates — {firstName}&rsquo;s actual price may be higher or lower.
+        </p>
 
         <h2>Specs</h2>
         <div className="specgrid">

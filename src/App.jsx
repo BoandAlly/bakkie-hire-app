@@ -671,6 +671,8 @@ export default function App() {
           <CreateListing
             initial={editing ?? null}
             owner={driver ? { name: driver.name, phone: driver.phone } : null}
+            ownerPhoto={driver?.photo ?? ''}
+            onSetPhoto={(photo) => updateDriver({ photo })}
             onSave={saveListing}
             onCancel={() => go({ name: isDriver ? 'vehicles' : 'explore' })}
           />

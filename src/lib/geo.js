@@ -60,20 +60,31 @@ export function nearestPlace(coords) {
   return best
 }
 
+// Where a customer starts before they've set an area. We centre on the city so
+// Explore opens straight to the vehicle list instead of forcing the "Where are
+// you?" screen first — they can still change their area from the header button.
+const DEFAULT_PLACE = PLACES[0] // Durban CBD
+
 /**
- * Location gate for the customer flow.
+ * Location for the customer flow.
  *
  * Geolocation can fail in ways that aren't errors — the browser blocks it on
  * insecure origins, the user declines, or the device just never answers. Every
  * one of those has to land somewhere the customer can still use the app, so a
- * manual area picker always stays available.
+ * manual area picker always stays available, and until they pick we default to
+ * the city centre rather than blocking them.
  */
 export function useLocation() {
-  // A remembered location loads straight to 'ready', so the gate is skipped.
+  // A remembered location loads straight to 'ready'. With nothing saved we still
+  // start 'ready', centred on the default area, so Explore is usable at once.
   const saved = loadSavedLocation()
-  const [status, setStatus] = useState(saved ? 'ready' : 'idle') // idle | asking | ready | denied | unsupported
-  const [coords, setCoords] = useState(saved?.coords ?? null)
-  const [areaName, setAreaName] = useState(saved?.areaName ?? '')
+  const start = saved ?? {
+    coords: { lat: DEFAULT_PLACE.lat, lng: DEFAULT_PLACE.lng },
+    areaName: DEFAULT_PLACE.name,
+  }
+  const [status, setStatus] = useState('ready') // idle | asking | ready | denied | unsupported
+  const [coords, setCoords] = useState(start.coords)
+  const [areaName, setAreaName] = useState(start.areaName)
 
   const request = useCallback(() => {
     if (!('geolocation' in navigator)) {

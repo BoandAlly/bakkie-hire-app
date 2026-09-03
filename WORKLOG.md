@@ -7,6 +7,71 @@ When you (or Claude) make a meaningful change, add a short entry here before pus
 
 ---
 
+## 2026-09-04 — Megan — big UI update, now pushed to `main`
+
+Hey! Busy day — lots of changes, and I've pushed all of it (plus the earlier
+`my-changes` work that had never made it to GitHub) up to **`main`**. So just
+`git pull` and run `npm install` (there's a new library — see below) and you'll
+have everything. Here's the plain-English rundown of what changed and why:
+
+**Explore — the customer "Find a vehicle" screen**
+- It no longer forces you through the "Where are you?" and "Where are you moving
+  to?" screens first. It opens **straight to the list of vehicles**. Your area
+  just defaults to Durban CBD, and you can still change it from the pill up top.
+- All the filter chips (vehicle type, features, load, distance) now live behind
+  one **Filters** button, so the vehicle list is the first thing you see. A small
+  number badge shows how many filters are switched on.
+
+**The in-chat fare estimator**
+- Fixed the bug where the **"Ask <driver> about this trip"** button did nothing
+  when "Need it now" was selected. It now works. (The estimate used to wait on an
+  online route lookup that could hang; it now uses our built-in suburb list, so
+  it's instant and the button always fires.)
+- When someone ticks **"I'll need a lift back,"** it now tells them the driver may
+  charge extra for the return trip.
+
+**"Prices are estimates" — stated everywhere**
+- Explore, the driver's detail page, and the fare estimate all now say clearly
+  that prices are **estimates** and the driver's real price may be higher or
+  lower. (Not shown on a confirmed booking — that price is the real agreed one.)
+
+**Drivers must have a profile photo**
+- A driver **can't publish a listing until they add a photo of themselves**. It's
+  a required step in the listing form (red "required" marker), and it shows on
+  their detail page so customers know who's turning up.
+
+**NEW — live coverage-radius map for drivers**
+- In the listing form, the "how far will you travel" slider now has a real
+  **map**. The driver sees a **circle around their spot**; dragging the slider
+  grows/shrinks it live, and they can **drag the pin** or tap **"Use my location"**
+  to set exactly where they are.
+- Wording explains it simply: *people inside the circle can see your listing,
+  people outside can't — but you can still deliver anywhere; the circle only
+  controls who sees you.* (That's the agreed rule — the radius is only about the
+  unpaid drive to reach a customer, not about where jobs can go.)
+- Under the hood: added the **`leaflet`** map library (that's why you need
+  `npm install` after pulling) and a new file **`src/components/RadiusMap.jsx`**.
+  Explore now measures distance from the driver's exact map pin when they've set
+  one (falls back to the suburb centre otherwise).
+- It uses **OpenStreetMap** — free and legal, with the "© OpenStreetMap
+  contributors" credit shown on the map. It needs internet to show the streets,
+  but only on that one setup screen, and if there's no signal the slider + circle
+  still work. **Note for when we go live to real users:** we should swap the
+  map-tile source off OSM's free/donated servers (their policy asks you not to
+  lean on them for production traffic) — it's a one-line change, just flagging it
+  so we don't forget.
+
+**Still to do — designed with the AI but NOT built yet:**
+- The **drop-off search** on Explore ("add your drop-off to find drivers willing
+  to take you there"). We worked out exactly how it should behave, and there's
+  one important rule to remember when we build it: **the drop-off is never limited
+  by the driver's radius.** The radius only caps the unpaid drive *to* the
+  customer (the pickup). The drop-off leg is the paid job, so a driver is happy to
+  do a long one — the drop-off should only *price* the trip, never hide a driver.
+  This is the next thing to build.
+
+---
+
 ## 2026-09-03 — Megan (branch `my-changes`, not on GitHub yet)
 Working through the new product spec. `SPEC.md` has the whole thing, with five
 items cut because they need the platform to handle money, which contradicts what
