@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react'
-import { placeByName } from '../data/places.js'
+import { placeByName, PLACES, routeDistanceKm } from '../data/places.js'
 import { VEHICLE_CLASSES, classById, VehicleSilhouette } from '../data/vehicleClasses.jsx'
-import { rateLabel, quote } from '../lib/pricing.js'
+import { rateLabel, quote, rand } from '../lib/pricing.js'
 import { roadKm } from '../lib/geo.js'
 import Icon, { StarIcon } from '../components/Icon.jsx'
 
@@ -38,6 +38,29 @@ const RADII = [
   { km: 50, label: 'Within 50 km' },
 ]
 
+// The trip is asked for before anything is shown, so every result can be priced
+// for the actual job instead of advertising a rate the customer has to do sums
+// with. Kept on the device because it's almost always the same move being
+// quoted twice, and retyping it is the annoying part.
+const TRIP_KEY = 'bakkie.trip.v1'
+const BLANK_TRIP = { pickup: '', dropoff: '' }
+
+function loadTrip() {
+  try {
+    return { ...BLANK_TRIP, ...(JSON.parse(localStorage.getItem(TRIP_KEY)) ?? {}) }
+  } catch {
+    return { ...BLANK_TRIP }
+  }
+}
+
+function saveTrip(trip) {
+  try {
+    localStorage.setItem(TRIP_KEY, JSON.stringify(trip))
+  } catch {
+    /* private window — they'll just be asked again next time */
+  }
+}
+
 export default function Nearby({ listings, coords, areaName, onOpen, onChangeArea, ratings = {} }) {
   const [query, setQuery] = useState('')
   const [classFilter, setClassFilter] = useState('')
@@ -46,7 +69,19 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
   const [helpersOnly, setHelpersOnly] = useState(false)
   const [minPayload, setMinPayload] = useState(0)
   const [radiusKm, setRadiusKm] = useState(0)
-  const [sort, setSort] = useState('near')
+  const [trip, setTrip] = useState(loadTrip)
+  const [editingTrip, setEditingTrip] = useState(false)
+  // Cheapest-first is the useful default once we know the actual job.
+  const [sort, setSort] = useState('price')
+
+  const tripSet = Boolean(trip.pickup && trip.dropoff && trip.pickup !== trip.dropoff)
+  const tripKm = tripSet ? routeDistanceKm(trip.pickup, trip.dropoff) : null
+
+  const setLeg = (patch) => {
+    const next = { ...trip, ...patch }
+    setTrip(next)
+    saveTrip(next)
+  }
 
   const rows = useMemo(() => {
     if (!coords) return []
@@ -55,10 +90,15 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     const scored = listings
       .map((l) => {
         const base = placeByName(l.baseLocation)
+        // Priced for the real job once we know it. Without a trip there is
+        // nothing to price, so a fixed reference distance keeps "cheapest"
+        // meaningful across per-km and per-hour drivers.
+        const forJob = tripKm ? quote(l, { distanceKm: tripKm })?.total ?? null : null
         return {
           listing: l,
           km: base ? roadKm(coords, base) : null,
-          refPrice: quote(l, { distanceKm: REFERENCE_KM })?.total ?? Infinity,
+          tripTotal: forJob,
+          refPrice: forJob ?? quote(l, { distanceKm: REFERENCE_KM })?.total ?? Infinity,
         }
       })
       // An operator who won't travel this far isn't available to this customer.
@@ -97,6 +137,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     minPayload,
     radiusKm,
     ratings,
+    tripKm,
     sort,
   ])
 
@@ -108,7 +149,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     helpersOnly ||
     minPayload > 0 ||
     radiusKm > 0 ||
-    sort !== 'near'
+    sort !== 'price'
 
   const clearAll = () => {
     setQuery('')
@@ -118,7 +159,66 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     setHelpersOnly(false)
     setMinPayload(0)
     setRadiusKm(0)
-    setSort('near')
+    setSort('price')
+  }
+
+  const tripPicker = (
+    <div className="trippicker">
+      <label className="field">
+        <span>Pick-up</span>
+        <select value={trip.pickup} onChange={(e) => setLeg({ pickup: e.target.value })}>
+          <option value="">Where from?</option>
+          {PLACES.map((p) => (
+            <option key={p.name}>{p.name}</option>
+          ))}
+        </select>
+      </label>
+      <label className="field">
+        <span>Drop-off</span>
+        <select value={trip.dropoff} onChange={(e) => setLeg({ dropoff: e.target.value })}>
+          <option value="">Where to?</option>
+          {PLACES.map((p) => (
+            <option key={p.name}>{p.name}</option>
+          ))}
+        </select>
+      </label>
+    </div>
+  )
+
+  // Nothing to show until we know the job — a rate per km isn't an answer to
+  // "what will this cost me", and it's the first thing anyone wants.
+  if (!tripSet || editingTrip) {
+    return (
+      <div className="screen">
+        <header className="screen-head">
+          <h1>Where are you moving to?</h1>
+          <p className="sub">
+            Tell us the trip and we&rsquo;ll show you what each driver would charge for it.
+          </p>
+        </header>
+
+        {tripPicker}
+
+        {trip.pickup && trip.dropoff && trip.pickup === trip.dropoff && (
+          <p className="blockhint error">Pick two different areas.</p>
+        )}
+
+        <button
+          className="btn primary full"
+          disabled={!tripSet}
+          onClick={() => setEditingTrip(false)}
+        >
+          <Icon name="search" size={17} />
+          {tripSet ? `Show me drivers · ${tripKm} km` : 'Show me drivers'}
+        </button>
+
+        {editingTrip && (
+          <button className="btn secondary full" onClick={() => setEditingTrip(false)}>
+            Cancel
+          </button>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -131,6 +231,18 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
           <Icon name="chevron" size={15} className="dim" />
         </button>
       </header>
+
+      {/* The job being priced, always visible and always changeable. */}
+      <button className="tripbar" onClick={() => setEditingTrip(true)}>
+        <Icon name="pin" size={17} />
+        <span className="tripbar-route">
+          <strong>
+            {trip.pickup} &rarr; {trip.dropoff}
+          </strong>
+          <em>{tripKm} km · prices below are for this trip</em>
+        </span>
+        <Icon name="chevron" size={15} className="dim" />
+      </button>
 
       <div className="searchbar">
         <Icon name="search" size={18} className="dim" />
@@ -263,12 +375,13 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         </div>
       ) : (
         <div className="grid">
-          {rows.map(({ listing, km }) => (
+          {rows.map(({ listing, km, tripTotal }) => (
             <VehicleCard
               key={listing.id}
               listing={listing}
               km={km}
               rated={ratings[listing.id]}
+              tripTotal={tripTotal}
               onOpen={() => onOpen(listing.id)}
             />
           ))}
@@ -300,7 +413,7 @@ function scoreOf(listing, ratings) {
   return ratings[listing.id]?.average ?? listing.rating
 }
 
-function VehicleCard({ listing, km, onOpen, rated }) {
+function VehicleCard({ listing, km, onOpen, rated, tripTotal = null }) {
   const cls = classById(listing.vehicleClass)
   return (
     <button
@@ -343,7 +456,16 @@ function VehicleCard({ listing, km, onOpen, rated }) {
         </span>
 
         <span className="card-bottom">
-          <span className="card-rate">{rateLabel(listing)}</span>
+          {/* The total for this job is what people actually compare. The rate
+              stays underneath so they can see how it was arrived at. */}
+          {tripTotal != null ? (
+            <span className="card-rate">
+              <strong>≈ {rand(tripTotal)}</strong>
+              <em>{rateLabel(listing)}</em>
+            </span>
+          ) : (
+            <span className="card-rate">{rateLabel(listing)}</span>
+          )}
           {listing.roundTrip && (
             <span className="pill">
               <Icon name="refresh" size={12} />
