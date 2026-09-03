@@ -39,6 +39,24 @@ const JUNK = new Set([
 /** A place, however it was found. Everything downstream uses this shape. */
 const place = (label, lat, lng, kind) => ({ label, lat, lng, kind })
 
+/**
+ * The house number typed at the front of a search, if any.
+ *
+ * South African house numbers are largely absent from OpenStreetMap outside
+ * Johannesburg and Cape Town — Nominatim returns nothing for "12 Florida Road,
+ * Durban" either, so this is missing data rather than a geocoder we could swap.
+ * Someone typing the number still means it, so we keep it and carry it to the
+ * driver instead of throwing it away.
+ */
+export function leadingHouseNumber(query) {
+  const m = query.trim().match(/^(\d+[a-zA-Z]?)\s+\S/)
+  return m ? m[1] : ''
+}
+
+/** How a place reads once the customer's own detail is added. */
+export const fullAddress = (leg) =>
+  leg ? [leg.detail, leg.label].filter(Boolean).join(', ') : ''
+
 /** Turn one Photon feature into a readable one-line address. */
 function labelFor(p) {
   const line1 = [p.housenumber, p.street ?? p.name].filter(Boolean).join(' ')

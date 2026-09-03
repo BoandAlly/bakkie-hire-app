@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { searchPlaces } from '../lib/geocode.js'
+import { searchPlaces, leadingHouseNumber } from '../lib/geocode.js'
 import Icon from './Icon.jsx'
 
 // A text box that suggests places as you type: your own suburbs first, then
@@ -58,7 +58,11 @@ export default function AddressField({ label, value, onChange, placeholder }) {
   }, [])
 
   const choose = (p) => {
-    onChange(p)
+    // If they typed "12 Florida Road" and the map had no number for it, keep
+    // their 12 rather than silently dropping it.
+    const typedNumber = p.kind === 'address' ? leadingHouseNumber(text) : ''
+    const detail = /^\d/.test(p.label) ? '' : typedNumber
+    onChange({ ...p, detail })
     setText(p.label)
     setResults([])
     setOpen(false)
@@ -120,6 +124,20 @@ export default function AddressField({ label, value, onChange, placeholder }) {
         <p className="addressfield-empty">
           Nothing found. Try the suburb name on its own.
         </p>
+      )}
+
+      {/* Once a place is pinned, the number and the "which gate" detail come
+          from the person, not the map — South African house numbers mostly
+          aren't in OpenStreetMap, and this is what the driver actually needs to
+          find the door. It doesn't move the pin, so it can't skew the price. */}
+      {value && (
+        <input
+          className="addressfield-detail"
+          value={value.detail ?? ''}
+          onChange={(e) => onChange({ ...value, detail: e.target.value })}
+          placeholder="House number, complex, gate — optional"
+          aria-label={`${label} house number or directions`}
+        />
       )}
     </div>
   )

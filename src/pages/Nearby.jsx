@@ -5,7 +5,8 @@ import { rateLabel, quote, rand } from '../lib/pricing.js'
 import { roadKm } from '../lib/geo.js'
 import Icon, { StarIcon } from '../components/Icon.jsx'
 import AddressField from '../components/AddressField.jsx'
-import { roadDistanceBetween } from '../lib/geocode.js'
+import { roadDistanceBetween, fullAddress } from '../lib/geocode.js'
+import { loadTrip, saveTrip, isTripSet } from '../lib/trip.js'
 
 // Everything within reach, sorted however the customer wants to look at it.
 
@@ -39,39 +40,6 @@ const RADII = [
   { km: 25, label: 'Within 25 km' },
   { km: 50, label: 'Within 50 km' },
 ]
-
-// The trip is asked for before anything is shown, so every result can be priced
-// for the actual job instead of advertising a rate the customer has to do sums
-// with. Kept on the device because it's almost always the same move being
-// quoted twice, and retyping it is the annoying part.
-const TRIP_KEY = 'bakkie.trip.v1'
-const BLANK_TRIP = { pickup: null, dropoff: null }
-
-// A leg is {label, lat, lng, kind}. Anything else — including trips saved
-// before addresses existed, when these were plain suburb names — is dropped
-// rather than half-read, so an old value can't produce a nonsense quote.
-const validLeg = (v) =>
-  v && typeof v === 'object' && typeof v.label === 'string' &&
-  Number.isFinite(v.lat) && Number.isFinite(v.lng)
-    ? v
-    : null
-
-function loadTrip() {
-  try {
-    const saved = JSON.parse(localStorage.getItem(TRIP_KEY)) ?? {}
-    return { pickup: validLeg(saved.pickup), dropoff: validLeg(saved.dropoff) }
-  } catch {
-    return { ...BLANK_TRIP }
-  }
-}
-
-function saveTrip(trip) {
-  try {
-    localStorage.setItem(TRIP_KEY, JSON.stringify(trip))
-  } catch {
-    /* private window — they'll just be asked again next time */
-  }
-}
 
 export default function Nearby({ listings, coords, areaName, onOpen, onChangeArea, ratings = {} }) {
   const [query, setQuery] = useState('')
@@ -270,7 +238,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         <Icon name="pin" size={17} />
         <span className="tripbar-route">
           <strong>
-            {trip.pickup.label} &rarr; {trip.dropoff.label}
+            {fullAddress(trip.pickup)} &rarr; {fullAddress(trip.dropoff)}
           </strong>
           <em>
             {tripKm == null

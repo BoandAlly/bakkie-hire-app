@@ -5,6 +5,8 @@ import { quote, rateLabel, rand } from '../lib/pricing.js'
 import { timeLabel, bookingSummary, bookingDateLabel, isUpcoming } from '../lib/threads.js'
 import { nearestPlace } from '../lib/geo.js'
 import { shrinkImage } from '../lib/photos.js'
+import { loadTrip, isTripSet } from '../lib/trip.js'
+import { roadDistanceBetween, fullAddress } from '../lib/geocode.js'
 import { formatPhone } from '../lib/session.js'
 import Icon, { Stars } from '../components/Icon.jsx'
 
@@ -239,8 +241,26 @@ const GOODS = [
 ]
 
 function FareCalculator({ listing, firstName, onClose, onAsk }) {
+  // The customer already told us the job on the browse screen. Asking again
+  // here would be the app forgetting. They can still change it — that reopens
+  // the trip screen, which is where the address search lives.
+  const savedTrip = loadTrip()
+  const haveSavedTrip = isTripSet(savedTrip)
+
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [tripKm, setTripKm] = useState(null)
+
+  useEffect(() => {
+    if (!haveSavedTrip) return
+    let alive = true
+    roadDistanceBetween(savedTrip.pickup, savedTrip.dropoff).then((km) => {
+      if (alive) setTripKm(km)
+    })
+    return () => {
+      alive = false
+    }
+  }, [haveSavedTrip, savedTrip.pickup?.lat, savedTrip.dropoff?.lat])
   const [goods, setGoods] = useState('')
   const [goodsOther, setGoodsOther] = useState('')
   const [when, setWhen] = useState('now')
@@ -250,12 +270,16 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
   const [liftBack, setLiftBack] = useState(false)
   const [declared, setDeclared] = useState(false)
 
+  // Where the job is, and how far — from the saved trip when there is one,
+  // otherwise from the two pickers below.
+  const fromLabel = haveSavedTrip ? fullAddress(savedTrip.pickup) : from
+  const toLabel = haveSavedTrip ? fullAddress(savedTrip.dropoff) : to
+
   const result = useMemo(() => {
-    if (!from || !to || from === to) return null
-    const distanceKm = routeDistanceKm(from, to)
+    const distanceKm = haveSavedTrip ? tripKm : from && to && from !== to ? routeDistanceKm(from, to) : null
     if (distanceKm == null) return null
     return { distanceKm, q: quote(listing, { distanceKm, helpers: 0 }) }
-  }, [from, to, listing])
+  }, [haveSavedTrip, tripKm, from, to, listing])
 
   const goodsText = goods === 'Something else' ? goodsOther.trim() : goods
   // The driver decides whether to take a job from what is being moved, so the
@@ -271,7 +295,7 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
   const askText = result
     ? [
         `Hi ${firstName}, what would you charge to move ${goodsText.toLowerCase()} `,
-        `from ${from} to ${to}, ${whenText}?`,
+        `from ${fromLabel} to ${toLabel}, ${whenText}?`,
         ` (About ${result.distanceKm} km — I estimated around ${rand(result.q.total)}.)`,
         accompany ? ' I’d travel with the goods.' : '',
         accompany && liftBack ? ' I’d need a lift back too.' : '',
@@ -287,29 +311,46 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
         </button>
       </div>
 
-      <div className="farecalc-fields">
-        <label className="field">
-          <span>Pick-up</span>
-          <select value={from} onChange={(e) => setFrom(e.target.value)}>
-            <option value="">Choose area</option>
-            {PLACES.map((p) => (
-              <option key={p.name}>{p.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Drop-off</span>
-          <select value={to} onChange={(e) => setTo(e.target.value)}>
-            <option value="">Choose area</option>
-            {PLACES.map((p) => (
-              <option key={p.name}>{p.name}</option>
-            ))}
-          </select>
-        </label>
-      </div>
+      {/* The trip the customer already set on the browse screen, including any
+          house number they gave. Only falls back to picking suburbs here if
+          they somehow reached a chat without setting one. */}
+      {haveSavedTrip ? (
+        <div className="farecalc-trip">
+          <Icon name="pin" size={16} className="dim" />
+          <span>
+            <strong>
+              {fromLabel} &rarr; {toLabel}
+            </strong>
+            <em>{tripKm == null ? 'Measuring the route…' : `${tripKm} km`}</em>
+          </span>
+        </div>
+      ) : (
+        <>
+          <div className="farecalc-fields">
+            <label className="field">
+              <span>Pick-up</span>
+              <select value={from} onChange={(e) => setFrom(e.target.value)}>
+                <option value="">Choose area</option>
+                {PLACES.map((p) => (
+                  <option key={p.name}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="field">
+              <span>Drop-off</span>
+              <select value={to} onChange={(e) => setTo(e.target.value)}>
+                <option value="">Choose area</option>
+                {PLACES.map((p) => (
+                  <option key={p.name}>{p.name}</option>
+                ))}
+              </select>
+            </label>
+          </div>
 
-      {from && to && from === to && (
-        <p className="farecalc-hint">Pick two different areas to get an estimate.</p>
+          {from && to && from === to && (
+            <p className="farecalc-hint">Pick two different areas to get an estimate.</p>
+          )}
+        </>
       )}
 
       <div className="tripfield">
