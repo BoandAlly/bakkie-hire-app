@@ -8,6 +8,7 @@ import {
 } from '../lib/threads.js'
 import { rand } from '../lib/pricing.js'
 import Icon from '../components/Icon.jsx'
+import CopyLocation from '../components/CopyLocation.jsx'
 
 // The driver's first screen. Enquiries are the only thing here that earns them
 // money today, so nothing else competes for the top of the page.
@@ -54,29 +55,35 @@ export default function DriverEnquiries({ driver, listings, threads, onOpenChat 
           <h2>Coming up</h2>
           <div className="list tight">
             {trips.map(({ booking: b, thread: t }, i) => (
-              <button
-                key={b.id}
-                className="triprow"
-                onClick={() => onOpenChat(t.listingId, t.customerEmail)}
-              >
-                <span className={i === 0 ? 'triprow-when next' : 'triprow-when'}>
-                  {b.asap ? 'ASAP' : bookingDateLabel(b.date)}
-                  <em>{b.asap ? 'waiting' : b.time}</em>
-                </span>
-                <span className="triprow-body">
-                  <strong>
-                    {b.pickup} &rarr; {b.dropoff}
-                  </strong>
-                  <em>
-                    {b.customerName}
-                    {b.goods ? ` · ${b.goods}` : ''}
-                    {b.price ? ` · ${rand(b.price)}` : ''}
-                  </em>
-                </span>
-                <span className={b.status === 'confirmed' ? 'triprow-tag on' : 'triprow-tag'}>
-                  {b.status === 'confirmed' ? 'Confirmed' : 'Not confirmed'}
-                </span>
-              </button>
+              // A row, not a button: the copy control is a button of its own
+              // and one cannot be nested inside another.
+              <div key={b.id} className="triprow">
+                <button
+                  className="triprow-open"
+                  onClick={() => onOpenChat(t.listingId, t.customerEmail)}
+                >
+                  <span className={i === 0 ? 'triprow-when next' : 'triprow-when'}>
+                    {b.asap ? 'ASAP' : bookingDateLabel(b.date)}
+                    <em>{b.asap ? 'waiting' : b.time}</em>
+                  </span>
+                  <span className="triprow-body">
+                    <strong>
+                      {b.pickup} &rarr; {b.dropoff}
+                    </strong>
+                    <em>
+                      {b.customerName}
+                      {b.goods ? ` · ${b.goods}` : ''}
+                      {b.price ? ` · ${rand(b.price)}` : ''}
+                    </em>
+                  </span>
+                  <span className={b.status === 'confirmed' ? 'triprow-tag on' : 'triprow-tag'}>
+                    {b.status === 'confirmed' ? 'Confirmed' : 'Not confirmed'}
+                  </span>
+                </button>
+                {/* Grab the pick-up without opening the job - what you want
+                    when you are about to set off and just need it in Maps. */}
+                <CopyLocation label={b.pickup} at={b.pickupAt} compact title="Copy pick-up" />
+              </div>
             ))}
           </div>
         </section>

@@ -9,6 +9,7 @@ import { loadTrip, isTripSet } from '../lib/trip.js'
 import { roadDistanceBetween, fullAddress } from '../lib/geocode.js'
 import { formatPhone } from '../lib/session.js'
 import Icon, { Stars } from '../components/Icon.jsx'
+import CopyLocation from '../components/CopyLocation.jsx'
 
 // Where the job actually gets arranged.
 
@@ -694,8 +695,18 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
         <Row label="Date" value={b.asap ? 'As soon as possible' : bookingDateLabel(b.date)} />
         {!b.asap && <Row label="Time" value={b.time} />}
         {b.goods && <Row label="Carrying" value={b.goods} />}
-        <Row label="From" value={b.pickup} />
-        <Row label="To" value={b.dropoff} />
+        {/* The driver navigates to the pick-up, so that is the one worth
+            copying straight into their own maps app. */}
+        <Row
+          label="From"
+          value={b.pickup}
+          action={isDriver ? <CopyLocation label={b.pickup} at={b.pickupAt} /> : null}
+        />
+        <Row
+          label="To"
+          value={b.dropoff}
+          action={isDriver ? <CopyLocation label={b.dropoff} at={b.dropoffAt} /> : null}
+        />
         {b.distanceKm ? <Row label="Distance" value={`${b.distanceKm} km`} /> : null}
         {b.accompany && (
           <Row label="Customer" value={b.liftBack ? 'Travelling, needs a lift back' : 'Travelling with the goods'} />
@@ -940,10 +951,11 @@ function PhotoMessage({ m, mine }) {
   )
 }
 
-const Row = ({ label, value }) => (
+const Row = ({ label, value, action = null }) => (
   <div className="bookingcard-row">
     <span>{label}</span>
     <strong>{value}</strong>
+    {action}
   </div>
 )
 
@@ -1039,6 +1051,12 @@ function TripRequest({ listing, firstName, customerName, onSend }) {
       asap: when === 'now',
       pickup: fullAddress(trip.pickup),
       dropoff: fullAddress(trip.dropoff),
+      // Coordinates ride along so the driver can paste the pick-up straight
+      // into whatever maps app they already use. Copied onto the booking rather
+      // than looked up later, so the point stays the one that was agreed - even
+      // if the customer edits their trip afterwards.
+      pickupAt: trip.pickup.lat != null ? { lat: trip.pickup.lat, lng: trip.pickup.lng } : null,
+      dropoffAt: trip.dropoff.lat != null ? { lat: trip.dropoff.lat, lng: trip.dropoff.lng } : null,
       goods: goodsText,
       accompany,
       liftBack,

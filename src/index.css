@@ -1717,8 +1717,9 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
 .tripwarn.indent { margin-left: 26px; }
 
 /* The driver's upcoming work, soonest first. */
-.triprow {
-  display: flex; align-items: center; gap: 12px; width: 100%;
+.triprow { display: flex; align-items: center; gap: 8px; }
+.triprow-open {
+  display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0;
   padding: 11px 0; border: 0; background: none; text-align: left; color: var(--ink);
 }
 .triprow + .triprow { border-top: 1px solid var(--border); }
@@ -1772,3 +1773,14 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
   padding: 9px 12px; border-radius: var(--r-sm);
   background: var(--amber-tint); color: var(--amber);
 }
+
+/* Copy the pick-up into the driver's own maps app. */
+.copyloc {
+  display: inline-flex; align-items: center; gap: 5px; flex: none;
+  min-height: 30px; padding: 0 9px;
+  border: 1px solid var(--border); border-radius: var(--r-pill);
+  background: var(--surface); font-size: 12px; font-weight: 600; color: var(--blue);
+}
+.copyloc:hover { border-color: var(--blue); }
+.copyloc.compact { min-height: 28px; width: 28px; padding: 0; justify-content: center; }
+.bookingcard-row .copyloc { margin-left: 8px; }
