@@ -242,9 +242,27 @@ export default function Chat({
 // Client-side price guide. Pick a pickup and a drop-off, get an estimate off the
 // driver's own rate — the same maths the listing is quoted on everywhere else, so
 // it can't quietly disagree with the number they saw on the ad.
+// The five things people actually move, from the seeded listings. "Something
+// else" opens a free-text box rather than forcing a bad fit.
+const GOODS = [
+  'Furniture',
+  'Appliances',
+  'Building material',
+  'Boxes / household',
+  'Something else',
+]
+
 function FareCalculator({ listing, firstName, onClose, onAsk }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
+  const [goods, setGoods] = useState('')
+  const [goodsOther, setGoodsOther] = useState('')
+  const [when, setWhen] = useState('now')
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
+  const [accompany, setAccompany] = useState(false)
+  const [liftBack, setLiftBack] = useState(false)
+  const [declared, setDeclared] = useState(false)
 
   const result = useMemo(() => {
     if (!from || !to || from === to) return null
@@ -253,9 +271,25 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
     return { distanceKm, q: quote(listing, { distanceKm, helpers: 0 }) }
   }, [from, to, listing])
 
+  const goodsText = goods === 'Something else' ? goodsOther.trim() : goods
+  // The driver decides whether to take a job from what is being moved, so the
+  // request isn't sendable until they've been told and the customer has
+  // confirmed it's accurate.
+  const ready = Boolean(result && goodsText && declared && (when === 'now' || date))
+
+  const whenText =
+    when === 'now'
+      ? 'as soon as possible'
+      : `on ${bookingDateLabel(date)}${time ? ` at ${time}` : ''}`
+
   const askText = result
-    ? `Hi ${firstName}, roughly what would you charge to move from ${from} to ${to}? ` +
-      `(about ${result.distanceKm} km — I estimated around ${rand(result.q.total)}.)`
+    ? [
+        `Hi ${firstName}, what would you charge to move ${goodsText.toLowerCase()} `,
+        `from ${from} to ${to}, ${whenText}?`,
+        ` (About ${result.distanceKm} km — I estimated around ${rand(result.q.total)}.)`,
+        accompany ? ' I’d travel with the goods.' : '',
+        accompany && liftBack ? ' I’d need a lift back too.' : '',
+      ].join('')
     : ''
 
   return (
@@ -292,6 +326,97 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
         <p className="farecalc-hint">Pick two different areas to get an estimate.</p>
       )}
 
+      <div className="tripfield">
+        <span className="tripfield-label">What are you moving?</span>
+        <div className="goodsrow">
+          {GOODS.map((g) => (
+            <button
+              key={g}
+              className={goods === g ? 'chip on' : 'chip'}
+              onClick={() => setGoods(g)}
+            >
+              {g}
+            </button>
+          ))}
+        </div>
+        {goods === 'Something else' && (
+          <input
+            className="tripinput"
+            value={goodsOther}
+            onChange={(e) => setGoodsOther(e.target.value)}
+            placeholder="e.g. a piano, garden refuse, a motorbike"
+          />
+        )}
+      </div>
+
+      <div className="tripfield">
+        <span className="tripfield-label">When?</span>
+        <div className="goodsrow">
+          <button className={when === 'now' ? 'chip on' : 'chip'} onClick={() => setWhen('now')}>
+            Need it now
+          </button>
+          <button
+            className={when === 'later' ? 'chip on' : 'chip'}
+            onClick={() => setWhen('later')}
+          >
+            Pick a date
+          </button>
+        </div>
+        {when === 'later' && (
+          <div className="farecalc-fields">
+            <label className="field">
+              <span>Date</span>
+              <input
+                type="date"
+                value={date}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Time</span>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            </label>
+          </div>
+        )}
+      </div>
+
+      <label className="tripcheck">
+        <input
+          type="checkbox"
+          checked={accompany}
+          onChange={(e) => {
+            setAccompany(e.target.checked)
+            if (!e.target.checked) setLiftBack(false)
+          }}
+        />
+        <span>I want to travel with the goods</span>
+      </label>
+
+      {/* Only meaningful if they're going along in the first place. */}
+      {accompany && (
+        <label className="tripcheck indent">
+          <input
+            type="checkbox"
+            checked={liftBack}
+            onChange={(e) => setLiftBack(e.target.checked)}
+          />
+          <span>I’ll need a lift back</span>
+        </label>
+      )}
+
+      <label className="tripcheck">
+        <input
+          type="checkbox"
+          checked={declared}
+          onChange={(e) => setDeclared(e.target.checked)}
+        />
+        <span>
+          What I’ve described is accurate. {firstName} has the right to know what they’re
+          carrying before accepting.
+        </span>
+      </label>
+
       {result && (
         <>
           <div className="farecalc-result">
@@ -306,10 +431,19 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
             A guide off {firstName}'s rate — helpers and anything extra aren't included, and
             the final price is whatever the two of you agree in the chat.
           </p>
-          <button className="btn primary full" onClick={() => onAsk(askText)}>
+          <button className="btn primary full" disabled={!ready} onClick={() => onAsk(askText)}>
             <Icon name="send" size={17} />
             Ask {firstName} about this trip
           </button>
+          {!ready && (
+            <p className="farecalc-hint">
+              {!goodsText
+                ? 'Say what you’re moving to send this.'
+                : when === 'later' && !date
+                  ? 'Pick a date to send this.'
+                  : 'Tick the box above to confirm what you’re moving.'}
+            </p>
+          )}
         </>
       )}
     </div>
