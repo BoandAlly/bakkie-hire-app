@@ -4,6 +4,7 @@ import { VEHICLE_CLASSES, classById, VehicleSilhouette } from '../data/vehicleCl
 import { RATE_UNITS, rand } from '../lib/pricing.js'
 import { formatPhone } from '../lib/session.js'
 import Icon from '../components/Icon.jsx'
+import { shrinkImage } from '../lib/photos.js'
 
 const BLANK = {
   ownerName: '',
@@ -56,14 +57,34 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
     })
   }
 
-  const addPhotos = (files) => {
-    Array.from(files)
-      .slice(0, 6)
-      .forEach((file) => {
-        const reader = new FileReader()
-        reader.onload = () => setForm((f) => ({ ...f, photos: [...f.photos, reader.result] }))
-        reader.readAsDataURL(file)
-      })
+  // Photos are shrunk before they are kept. A phone photo held at full size
+  // overflows the storage budget, and the failure is silent — the listing looks
+  // saved and is gone on next open. See src/lib/photos.js.
+  const addPhotos = async (files) => {
+    setPhotoError('')
+    const room = Math.max(0, 6 - form.photos.length)
+    const picked = Array.from(files).slice(0, room)
+    if (!picked.length) return
+
+    setAddingPhotos(true)
+    const shrunk = []
+    let failed = 0
+    for (const file of picked) {
+      try {
+        shrunk.push(await shrinkImage(file))
+      } catch {
+        failed += 1
+      }
+    }
+    if (shrunk.length) setForm((f) => ({ ...f, photos: [...f.photos, ...shrunk] }))
+    if (failed) {
+      setPhotoError(
+        failed === picked.length
+          ? "Couldn't read that picture. Try another one."
+          : `${failed} of those pictures couldn't be read — the rest were added.`,
+      )
+    }
+    setAddingPhotos(false)
   }
 
   const num = (v) => (v === '' || v == null ? 0 : Number(v))
@@ -81,6 +102,8 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
 
   const ready = Boolean(form.ownerName && form.ownerPhone) && missing.length === 0
   const [attempted, setAttempted] = useState(false)
+  const [addingPhotos, setAddingPhotos] = useState(false)
+  const [photoError, setPhotoError] = useState('')
 
   const submit = () => {
     if (!ready) {
@@ -165,16 +188,26 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
               </button>
             </div>
           ))}
-          <label className="thumb add">
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              onChange={(e) => addPhotos(e.target.files)}
-            />
-            <span>+ Add photos</span>
-          </label>
+          {form.photos.length < 6 && (
+            <label className="thumb add">
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={addingPhotos}
+                onChange={(e) => {
+                  addPhotos(e.target.files)
+                  e.target.value = '' // so the same picture can be picked again
+                }}
+              />
+              <span>{addingPhotos ? 'Adding…' : '+ Add photos'}</span>
+            </label>
+          )}
         </div>
+        {photoError && <p className="blockhint error">{photoError}</p>}
+        {form.photos.length >= 6 && (
+          <p className="blockhint">That's the six pictures — remove one to swap it out.</p>
+        )}
       </section>
 
       <section className="block" id="create-section-3">

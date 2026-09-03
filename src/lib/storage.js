@@ -12,11 +12,19 @@ function read(key, fallback) {
   }
 }
 
+/**
+ * Returns false when the write didn't stick. Callers should say so rather than
+ * pretend it saved — a listing that looks saved and is gone on next open is the
+ * worst outcome, and used to be exactly what happened when photos filled the
+ * storage budget.
+ */
 function write(key, value) {
   try {
     localStorage.setItem(key, JSON.stringify(value))
+    return true
   } catch {
-    // Private window, quota, whatever — the app still works, it just won't persist.
+    // Out of room, or a private window where storage is refused.
+    return false
   }
 }
 

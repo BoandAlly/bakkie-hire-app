@@ -67,6 +67,7 @@ export default function App() {
   const [drivers, setDrivers] = useState(loadDrivers)
   const [customers, setCustomers] = useState(loadCustomers)
   const [session, setSession] = useState(loadSession)
+  const [storageFull, setStorageFull] = useState(false)
   const [view, setView] = useState(() => ({
     name: loadSession().role === 'driver' ? 'enquiries' : 'explore',
   }))
@@ -142,7 +143,9 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    saveListings(listings)
+    // A failed save used to pass unnoticed: the listing sat in memory looking
+    // fine and was gone on next open. Say it out loud instead.
+    if (!saveListings(listings)) setStorageFull(true)
     if (primed.current) pushListings(listings)
   }, [listings])
 
@@ -482,6 +485,12 @@ export default function App() {
 
   return (
     <div className={pushed ? 'app pushed' : 'app'}>
+      {storageFull && (
+        <div className="storagewarn" role="alert">
+          <strong>This phone is out of room.</strong> Your last change wasn’t saved and
+          will be lost when you close the app. Remove a few listing photos to free space.
+        </div>
+      )}
       <main>
         {viewName === 'explore' && (
           <Nearby
