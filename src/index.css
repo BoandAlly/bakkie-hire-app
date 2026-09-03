@@ -1475,3 +1475,19 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
 .tripcheck.indent { margin-left: 26px; }
 .tripcheck input { margin-top: 2px; flex: none; width: 17px; height: 17px; accent-color: var(--blue); }
 .btn.primary:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Driver availability */
+.availrow {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 14px;
+  padding: 4px 0 14px; border-bottom: 1px solid var(--border);
+}
+.availrow strong { display: block; font-size: 15px; }
+.availrow em {
+  display: block; margin-top: 2px; font-style: normal;
+  font-size: 13px; line-height: 1.45; color: var(--ink-3);
+}
+.availrow .switch { flex: none; width: 44px; height: 26px; accent-color: var(--green); cursor: pointer; }
+.hoursblock { padding-top: 14px; }
+.hoursblock .goodsrow { margin-bottom: 12px; }
+.hoursblock .farecalc-fields { display: flex; gap: 10px; }
+.hoursblock .farecalc-fields .field { flex: 1; }

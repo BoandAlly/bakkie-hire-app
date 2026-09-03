@@ -360,6 +360,14 @@ export default function App() {
       }
     })
 
+  /** Patch the signed-in driver's own record — availability, hours, and so on. */
+  const updateDriver = (patch) =>
+    setDrivers((prev) => {
+      const d = prev[session.driverEmail]
+      if (!d) return prev
+      return { ...prev, [session.driverEmail]: { ...d, ...patch } }
+    })
+
   const approveVerification = () => {
     setDrivers((prev) => {
       const d = prev[session.driverEmail]
@@ -582,6 +590,7 @@ export default function App() {
             listings={myListings}
             threads={threads}
             onToggleDoc={toggleDoc}
+            onUpdateDriver={updateDriver}
             onApprove={approveVerification}
             onSwitchRole={switchRole}
             onSignOut={signOut}

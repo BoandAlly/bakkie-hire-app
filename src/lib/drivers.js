@@ -55,6 +55,14 @@ export function saveDrivers(drivers) {
   }
 }
 
+// Mon-Sat 07:00-17:00 is the ordinary working week for this trade, so a driver
+// who never touches these settings still reads as available at sensible hours.
+// `availableNow` is the separate "I'm sitting here waiting for work right now"
+// switch, and starts off — it should be a deliberate act, not a default.
+export const DEFAULT_HOURS = { days: [1, 2, 3, 4, 5, 6], from: '07:00', to: '17:00' }
+
+export const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+
 export const blankDriver = ({ name, email, phone, password }) => ({
   name: (name ?? '').trim(),
   email: normaliseEmail(email),
@@ -62,8 +70,23 @@ export const blankDriver = ({ name, email, phone, password }) => ({
   password,
   docs: { idDoc: false, licence: false, reg: false },
   verified: false,
+  availableNow: false,
+  hours: { ...DEFAULT_HOURS },
   joined: new Date().toISOString().slice(0, 7),
 })
+
+/** Hours for a driver, filled in for accounts made before the setting existed. */
+export const hoursFor = (driver) => ({ ...DEFAULT_HOURS, ...(driver?.hours ?? {}) })
+
+/** Is this driver inside their own working hours right now? */
+export function withinWorkingHours(driver, at = new Date()) {
+  const h = hoursFor(driver)
+  if (!h.days.includes(at.getDay())) return false
+  const mins = at.getHours() * 60 + at.getMinutes()
+  const [fh, fm] = h.from.split(':').map(Number)
+  const [th, tm] = h.to.split(':').map(Number)
+  return mins >= fh * 60 + fm && mins <= th * 60 + tm
+}
 
 export const driverFor = (drivers, email) => drivers[normaliseEmail(email)] ?? null
 

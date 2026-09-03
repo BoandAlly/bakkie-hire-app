@@ -1,4 +1,11 @@
-import { DOCS, docsSubmitted, verificationState } from '../lib/drivers.js'
+import {
+  DOCS,
+  DAY_LABELS,
+  docsSubmitted,
+  verificationState,
+  hoursFor,
+  withinWorkingHours,
+} from '../lib/drivers.js'
 import { formatPhone } from '../lib/session.js'
 import { driverRatingsReceived, averageRating, timeLabel } from '../lib/threads.js'
 import Icon, { Stars } from '../components/Icon.jsx'
@@ -11,12 +18,15 @@ export default function DriverAccount({
   listings,
   threads,
   onToggleDoc,
+  onUpdateDriver,
   onApprove,
   onSwitchRole,
   onSignOut,
   onReset,
 }) {
   const vState = verificationState(driver)
+  const hours = hoursFor(driver)
+  const working = withinWorkingHours(driver)
   const live = listings.filter((l) => !l.paused).length
 
   const myIds = new Set(listings.map((l) => l.id))
@@ -126,6 +136,84 @@ export default function DriverAccount({
             Demo only: approve my verification
           </button>
         )}
+      </section>
+
+      <section className="panel">
+        <h2>When you work</h2>
+
+        <label className="availrow">
+          <span>
+            <strong>Available now</strong>
+            <em>
+              {driver.availableNow
+                ? 'Customers looking for someone right away will see you first.'
+                : 'Turn this on when you’re sitting and ready for a job.'}
+            </em>
+          </span>
+          <input
+            type="checkbox"
+            className="switch"
+            checked={Boolean(driver.availableNow)}
+            onChange={(e) => onUpdateDriver({ availableNow: e.target.checked })}
+          />
+        </label>
+
+        {/* Separate from the switch above on purpose: the switch is about right
+            now, this is the ordinary week people can expect to reach you. */}
+        <div className="hoursblock">
+          <span className="tripfield-label">Days you work</span>
+          <div className="goodsrow">
+            {DAY_LABELS.map((label, day) => {
+              const on = hours.days.includes(day)
+              return (
+                <button
+                  key={label}
+                  className={on ? 'chip on' : 'chip'}
+                  aria-pressed={on}
+                  onClick={() =>
+                    onUpdateDriver({
+                      hours: {
+                        ...hours,
+                        days: on
+                          ? hours.days.filter((d) => d !== day)
+                          : [...hours.days, day].sort(),
+                      },
+                    })
+                  }
+                >
+                  {label}
+                </button>
+              )
+            })}
+          </div>
+
+          <div className="farecalc-fields">
+            <label className="field">
+              <span>From</span>
+              <input
+                type="time"
+                value={hours.from}
+                onChange={(e) => onUpdateDriver({ hours: { ...hours, from: e.target.value } })}
+              />
+            </label>
+            <label className="field">
+              <span>Until</span>
+              <input
+                type="time"
+                value={hours.to}
+                onChange={(e) => onUpdateDriver({ hours: { ...hours, to: e.target.value } })}
+              />
+            </label>
+          </div>
+
+          <p className="panel-hint">
+            {hours.days.length === 0
+              ? 'Pick at least one day, otherwise customers will think you’re never working.'
+              : working
+                ? 'You’re inside your working hours right now.'
+                : 'You’re outside your working hours right now.'}
+          </p>
+        </div>
       </section>
 
       <section className="panel">
