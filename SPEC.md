@@ -15,6 +15,27 @@ preference. Anything that contradicts it has been cut — see the end of this
 document for what was removed and why.
 
 Status tags: **[BUILT]** already works · **[PART]** partly there · untagged = new.
+The tags below describe the state when this document was written.
+
+## Built since, on the `my-changes` branch
+
+- Real road distances for every quote (1.3a) — measured once, no maps API.
+- The customer now says what they're moving, when, and whether they're
+  travelling with it (1.2), and can't send until they've confirmed it.
+- Customer-adjustable search radius (1.3).
+- Star ratings are real, and honest when a driver has none (1.3).
+- Driver "Available now" switch and working hours (2.1, 2.2).
+- Photos no longer destroy listings, so delivery photos are safe to use (2.5).
+
+Still open, in rough order of what it costs:
+
+- Push notification to available drivers on a matching immediate request (2.1).
+- Per-minute rates and platform min/max bounds on driver pricing (1.3a).
+- Driver document upload and verification (§4) — and until that exists, the
+  "ID & licence checked" badge on listings is claiming something nothing
+  checks (§3).
+- Everything in §4 beyond that: privacy policy, permission prompts, account
+  deletion, data-safety declarations.
 
 ---
 
