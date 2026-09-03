@@ -580,11 +580,22 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto }) {
   const myRating = b[myKey]
   const target = isDriver ? custName : driverFirst
 
-  // Confirmation: each side has to agree before the pickup locks in.
+  // Confirmation runs in order, not in parallel: the driver names the price and
+  // agrees to it first, then the customer accepts that price. Letting the
+  // customer confirm first would mean agreeing to a figure the driver could
+  // still change underneath them.
   const mineConfirmed = isDriver ? b.driverConfirmed : b.customerConfirmed
   const otherConfirmed = isDriver ? b.customerConfirmed : b.driverConfirmed
   const otherName = isDriver ? custName : driverFirst
   const canCancel = (pending || confirmed) && isUpcoming(b)
+
+  // The driver owns the price. They can change it right up until they confirm;
+  // after that it is fixed, because the customer is being asked to accept that
+  // exact number.
+  const priceLocked = Boolean(b.driverConfirmed) || confirmed || done || cancelled
+  const canSetPrice = isDriver && !priceLocked
+  const awaitingDriver = !b.driverConfirmed && !cancelled && !done
+  const customerCanConfirm = !isDriver && Boolean(b.driverConfirmed) && !mineConfirmed
 
   const head = cancelled
     ? { icon: 'close', label: 'Pickup cancelled' }
@@ -627,6 +638,45 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto }) {
         <Row label="From" value={b.pickup} />
         <Row label="To" value={b.dropoff} />
       </div>
+
+      {/* The price. It belongs to the driver — they set it, they can change it,
+          and the customer is agreeing to their number, not to an app's guess. */}
+      <div className="bookingcard-price">
+        <span>
+          <em>Price for this trip</em>
+          <strong>{b.price ? rand(b.price) : 'Not set yet'}</strong>
+        </span>
+        {canSetPrice && (
+          <button
+            className="btn secondary"
+            onClick={() => {
+              const typed = window.prompt(
+                'What are you charging for this trip? Rands only.',
+                b.price ? String(b.price) : '',
+              )
+              if (typed == null) return
+              const amount = Math.round(Number(String(typed).replace(/[^\d.]/g, '')))
+              if (!Number.isFinite(amount) || amount <= 0) return
+              patch({ price: amount })
+            }}
+          >
+            {b.price ? 'Change' : 'Set price'}
+          </button>
+        )}
+      </div>
+
+      {isDriver && !priceLocked && (
+        <p className="bookingcard-note">
+          You decide the price. Change it as often as you like — it locks when you
+          confirm, and only then is {custName} asked to accept it.
+        </p>
+      )}
+      {!isDriver && awaitingDriver && (
+        <p className="bookingcard-note">
+          {driverFirst} sets the final price. You&rsquo;ll be asked to accept once they
+          confirm.
+        </p>
+      )}
       {/* Who and what is turning up. Shown once a pickup exists, so the
           customer can recognise the vehicle in the street. */}
       {(b.vehicleReg || b.vehicleName) && (
@@ -660,13 +710,37 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto }) {
         <div className="bookingcard-action">
           {mineConfirmed ? (
             <p className="bookingcard-wait">
-              You confirmed — waiting for {otherName} to confirm the date and time.
+              You confirmed {b.price ? `at ${rand(b.price)}` : ''} — waiting for {otherName}{' '}
+              to accept.
             </p>
-          ) : (
+          ) : isDriver ? (
+            <button
+              className="btn primary full"
+              disabled={!b.price}
+              onClick={() => {
+                if (
+                  !window.confirm(
+                    `Confirm this pickup at ${rand(b.price)}? The price is fixed once you do, and ${custName} will be asked to accept it.`,
+                  )
+                )
+                  return
+                confirmPickup()
+              }}
+            >
+              <Icon name="check" size={17} />
+              {b.price ? `Confirm at ${rand(b.price)}` : 'Set a price first'}
+            </button>
+          ) : customerCanConfirm ? (
             <button className="btn primary full" onClick={confirmPickup}>
               <Icon name="check" size={17} />
-              Confirm pickup
+              {b.price ? `Accept ${rand(b.price)}` : 'Accept pickup'}
             </button>
+          ) : (
+            // Waiting on the driver. Nothing to accept yet, so no button —
+            // the customer cannot agree to a price nobody has named.
+            <p className="bookingcard-wait">
+              Waiting for {driverFirst} to set a price and confirm.
+            </p>
           )}
           {canCancel && (
             <button className="btn ghost full" onClick={cancelPickup}>
