@@ -132,6 +132,35 @@ const routeCache = new Map()
 const cacheKey = (a, b) =>
   `${a.lat.toFixed(4)},${a.lng.toFixed(4)}>${b.lat.toFixed(4)},${b.lng.toFixed(4)}`
 
+// The drawn route is asked for separately from the distance. Distance is needed
+// for every quote and must be quick, so that call skips the geometry; the shape
+// is only needed when a map is actually on screen.
+const shapeCache = new Map()
+
+/**
+ * The route between two places as GeoJSON coordinates, for drawing.
+ * Null when routing is unavailable — the map then just shows the two pins.
+ */
+export async function routeShape(a, b, { signal } = {}) {
+  if (!a || !b) return null
+
+  const key = cacheKey(a, b)
+  if (shapeCache.has(key)) return shapeCache.get(key)
+
+  try {
+    const url = `${OSRM}/${a.lng},${a.lat};${b.lng},${b.lat}?overview=full&geometries=geojson`
+    const res = await fetch(url, { signal })
+    if (!res.ok) return null
+    const body = await res.json()
+    const coords = body?.routes?.[0]?.geometry?.coordinates
+    if (!Array.isArray(coords) || coords.length < 2) return null
+    shapeCache.set(key, coords)
+    return coords
+  } catch {
+    return null
+  }
+}
+
 /**
  * Road distance in km between two places.
  *

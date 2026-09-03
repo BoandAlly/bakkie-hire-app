@@ -1625,3 +1625,20 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
 .bookingcard-note {
   padding: 0 0 12px; font-size: 12.5px; line-height: 1.5; color: var(--ink-3);
 }
+
+/* Route map */
+.tripmap {
+  width: 100%; margin-bottom: 12px;
+  border: 1px solid var(--border); border-radius: var(--r); overflow: hidden;
+}
+.tripmap-failed {
+  padding: 12px 13px; margin-bottom: 12px;
+  border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--muted); font-size: 13px; color: var(--ink-3);
+}
+.mappin {
+  display: flex; align-items: center; justify-content: center;
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid #fff; box-shadow: var(--shadow-sm);
+  color: #fff; font-size: 12px; font-weight: 800;
+}

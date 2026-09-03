@@ -5,6 +5,7 @@ import { rateLabel, quote, rand } from '../lib/pricing.js'
 import { roadKm } from '../lib/geo.js'
 import Icon, { StarIcon } from '../components/Icon.jsx'
 import AddressField from '../components/AddressField.jsx'
+import TripMap from '../components/TripMap.jsx'
 import { roadDistanceBetween, fullAddress } from '../lib/geocode.js'
 import { loadTrip, saveTrip, isTripSet } from '../lib/trip.js'
 
@@ -248,6 +249,10 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         </span>
         <Icon name="chevron" size={15} className="dim" />
       </button>
+
+      {/* The route, drawn. It answers "is that the way I'd actually go" in a
+          way a number of kilometres never does. */}
+      <TripMap pickup={trip.pickup} dropoff={trip.dropoff} height={190} />
 
       <div className="searchbar">
         <Icon name="search" size={18} className="dim" />
