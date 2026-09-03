@@ -22,3 +22,7 @@ dist-artifact/
 
 # Local backend credentials
 .env
+
+# Local Android build output
+android/app/build/
+android/.gradle/
