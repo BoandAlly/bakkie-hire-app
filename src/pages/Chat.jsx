@@ -4,35 +4,14 @@ import { PLACES, routeDistanceKm } from '../data/places.js'
 import { quote, rateLabel, rand } from '../lib/pricing.js'
 import { timeLabel, bookingSummary, bookingDateLabel, isUpcoming } from '../lib/threads.js'
 import { nearestPlace } from '../lib/geo.js'
+import { shrinkImage } from '../lib/photos.js'
 import { formatPhone } from '../lib/session.js'
 import Icon, { Stars } from '../components/Icon.jsx'
 
 // Where the job actually gets arranged.
 
-// Shrink a camera photo before it goes into localStorage — full-res phone shots
-// are multi-megabyte and would blow the storage budget in a few pickups.
-function fileToDownscaledDataUrl(file, max = 1280, quality = 0.7) {
-  return new Promise((resolve, reject) => {
-    const url = URL.createObjectURL(file)
-    const img = new Image()
-    img.onload = () => {
-      URL.revokeObjectURL(url)
-      const scale = Math.min(1, max / Math.max(img.width, img.height))
-      const w = Math.round(img.width * scale)
-      const h = Math.round(img.height * scale)
-      const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h)
-      resolve(canvas.toDataURL('image/jpeg', quality))
-    }
-    img.onerror = () => {
-      URL.revokeObjectURL(url)
-      reject(new Error('Could not read that image'))
-    }
-    img.src = url
-  })
-}
+// Photo shrinking lives in lib/photos.js — the listing form needs exactly the
+// same thing, and having two copies is how they drift apart.
 
 // The driver's live position when they snap a photo, named to the nearest
 // suburb. Resolves to null (rather than rejecting) if location is off/declined,
@@ -68,6 +47,7 @@ export default function Chat({
   const [draft, setDraft] = useState('')
   const [calcOpen, setCalcOpen] = useState(false)
   const [bookOpen, setBookOpen] = useState(false)
+  const [photoError, setPhotoError] = useState('')
   const logRef = useRef(null)
   const cls = classById(listing.vehicleClass)
 
@@ -86,10 +66,14 @@ export default function Chat({
   // Driver snaps a before/after photo of the load; it's tagged with their live
   // location + time and dropped into the chat so the customer sees it too.
   const postPhoto = async (booking, phase, file) => {
+    setPhotoError('')
     let src
     try {
-      src = await fileToDownscaledDataUrl(file)
+      src = await shrinkImage(file)
     } catch {
+      // Used to fail silently — the driver tapped, nothing appeared, and there
+      // was no way to tell whether it had sent.
+      setPhotoError('That picture couldn’t be read. Try taking it again.')
       return
     }
     const loc = await currentPlace()
@@ -174,6 +158,8 @@ export default function Chat({
             </div>
           ),
         )}
+
+        {photoError && <p className="blockhint error">{photoError}</p>}
       </div>
 
       {isCustomer && calcOpen && (
