@@ -1,8 +1,12 @@
-// Greater Durban suburbs with rough centroids. Used to work out a job distance
-// so every listing can be quoted on the same basis.
+// Greater Durban suburbs with rough centroids, and the distance between them.
 //
-// This is a stand-in for real routing. When we wire up a maps provider, only
-// `routeDistanceKm` below needs to change — nothing else depends on it.
+// Real road distances live in the generated distances.js, measured once from
+// OpenStreetMap. The coordinates below are still used to place a suburb and to
+// estimate anything the generated table doesn't cover.
+//
+// After adding a suburb here, run `npm run build:distances` to measure it.
+
+import { roadDistanceKm } from './distances.js'
 
 export const PLACES = [
   { name: 'Durban CBD', lat: -29.8587, lng: 31.0218 },
@@ -47,8 +51,21 @@ function haversineKm(a, b) {
   return 2 * R * Math.asin(Math.sqrt(h))
 }
 
-/** Straight-line distance padded out to something road-like. */
+/**
+ * Distance for a job, in km.
+ *
+ * Prefers the real road distance measured from OpenStreetMap and baked into
+ * distances.js — those are actual driving routes, so they account for the
+ * harbour, the freeways and the one-way system rather than guessing.
+ *
+ * Falls back to a padded straight line for any suburb the table doesn't cover
+ * yet (one added to PLACES without re-running `npm run build:distances`), so
+ * adding a suburb degrades the estimate instead of breaking the quote.
+ */
 export function routeDistanceKm(fromName, toName) {
+  const road = roadDistanceKm(fromName, toName)
+  if (road != null) return Math.max(1, Math.round(road))
+
   const a = placeByName(fromName)
   const b = placeByName(toName)
   if (!a || !b) return null
