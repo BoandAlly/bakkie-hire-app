@@ -3,11 +3,23 @@ name: Build Android APK
 on:
   push:
     branches: [ main, master ]
+  # Run by hand, optionally without the backend. A build with no backend is the
+  # single-device app: it saves only to the phone it's on and shares nothing, so
+  # it can be handed round for trying out changes without touching real test data.
   workflow_dispatch:
+    inputs:
+      include_backend:
+        description: 'Connect to the shared Supabase backend'
+        type: boolean
+        default: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    # A push always builds the real, backend-connected app. Only a hand-run
+    # build can opt out, and it has to say so explicitly.
+    env:
+      WITH_BACKEND: ${{ github.event_name != 'workflow_dispatch' || inputs.include_backend }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -33,6 +45,7 @@ jobs:
       # out, and you get an APK that installs fine and silently never syncs.
       # Failing here instead makes that impossible to ship by accident.
       - name: Check backend config is present
+        if: env.WITH_BACKEND == 'true'
         env:
           URL: ${{ secrets.VITE_SUPABASE_URL }}
           KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
@@ -45,11 +58,21 @@ jobs:
           fi
           echo "Backend config present."
 
-      - name: Build web assets
+      - name: Build web assets (with backend)
+        if: env.WITH_BACKEND == 'true'
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
         run: npm run build
+
+      # Deliberately no env: Vite folds the config check to false and compiles
+      # Supabase out entirely, so this APK cannot reach the shared data even by
+      # accident.
+      - name: Build web assets (no backend)
+        if: env.WITH_BACKEND != 'true'
+        run: |
+          echo "Building WITHOUT the backend — this APK saves only to the phone it is on."
+          npm run build
 
       - name: Sync Capacitor
         run: npx cap sync android
