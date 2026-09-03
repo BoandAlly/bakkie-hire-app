@@ -316,8 +316,25 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
 .card:hover { border-color: var(--border-2); box-shadow: var(--shadow); transform: translateY(-2px); }
 .card:active { transform: translateY(0); }
 
-.card-photo { position: relative; display: block; aspect-ratio: 16 / 10; background: var(--muted); }
-.card-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+/* The photo box is a fixed shape whatever shape the photo is. An in-flow image
+   beats aspect-ratio on its own: a tall portrait photo stretched its card to
+   1355px and dragged every card in the row with it. Taking the image out of
+   flow means the box sets the size and the photo is cropped to fit. */
+.card-photo {
+  position: relative;
+  display: block;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--muted);
+}
+.card-photo img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
 
 .ph {
   display: flex;
