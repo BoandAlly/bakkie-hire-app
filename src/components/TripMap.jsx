@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 // MapLibre 6 dropped its default export; these are the only three pieces used.
 import { Map as MapLibreMap, Marker, LngLatBounds } from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
-import { routeShape } from '../lib/geocode.js'
+import { routeShape, isLocatable } from '../lib/geocode.js'
 
 // The trip on a map: where it starts, where it ends, and the road between.
 //
@@ -33,7 +33,7 @@ export default function TripMap({ pickup, dropoff, height = 200, onMove = null }
   // the markers in place — rebuilding on every change would tear the map down
   // mid-drag, flashing and throwing away whatever the person had panned to.
   useEffect(() => {
-    if (!holder.current || !pickup || !dropoff) return
+    if (!holder.current || !isLocatable(pickup) || !isLocatable(dropoff)) return
 
     let cancelled = false
     const m = new MapLibreMap({
@@ -111,13 +111,13 @@ export default function TripMap({ pickup, dropoff, height = 200, onMove = null }
     }
     // Built once for a given trip; see the effect below for coordinate changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [Boolean(pickup && dropoff)])
+  }, [isLocatable(pickup) && isLocatable(dropoff)])
 
   // Coordinates changed — either a new address, or a pin dragged. Move the
   // markers and redraw the route without touching the map itself.
   useEffect(() => {
     const m = map.current
-    if (!ready || !m || !pickup || !dropoff) return
+    if (!ready || !m || !isLocatable(pickup) || !isLocatable(dropoff)) return
 
     markers.current.pickup?.setLngLat([pickup.lng, pickup.lat])
     markers.current.dropoff?.setLngLat([dropoff.lng, dropoff.lat])
@@ -151,7 +151,8 @@ export default function TripMap({ pickup, dropoff, height = 200, onMove = null }
     }
   }, [ready, pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng])
 
-  if (!pickup || !dropoff) return null
+  // An address with no map location has nothing to draw.
+  if (!isLocatable(pickup) || !isLocatable(dropoff)) return null
 
   if (failed) {
     return (

@@ -121,6 +121,70 @@ export async function searchPlaces(query, { signal } = {}) {
   return [...suburbs, ...deduped].slice(0, 8)
 }
 
+/**
+ * Where the phone says it is, named. Pick-up only: a person knows where they
+ * are standing, and typing their own address is the most tedious part of
+ * asking for a bakkie.
+ *
+ * Rejects with a plain reason rather than a code, because every one of these
+ * gets shown to someone.
+ */
+export function currentLocation() {
+  return new Promise((resolve, reject) => {
+    if (!('geolocation' in navigator)) {
+      reject(new Error('This phone cannot share its location.'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude
+        const lng = pos.coords.longitude
+        let label = 'My current location'
+        try {
+          const res = await fetch(`${PHOTON.replace('/api/', '/reverse')}?lat=${lat}&lon=${lng}&limit=1`)
+          if (res.ok) {
+            const body = await res.json()
+            const p = body?.features?.[0]?.properties
+            if (p) label = labelFor(p) || label
+          }
+        } catch {
+          // Named or not, the coordinates are the part that matters.
+        }
+        resolve(place(label, lat, lng, 'current'))
+      },
+      (err) => {
+        reject(
+          new Error(
+            err.code === 1
+              ? 'Location is blocked for this app. Turn it on in your phone settings, or type the address instead.'
+              : 'Could not get your location just now. Type the address instead.',
+          ),
+        )
+      },
+      { enableHighAccuracy: true, timeout: 12000, maximumAge: 30000 },
+    )
+  })
+}
+
+/**
+ * An address the map could not find, kept as the person typed it.
+ *
+ * It has no coordinates, so it cannot be routed or priced - but refusing to
+ * accept it would strand anyone whose street simply is not in OpenStreetMap,
+ * which in South Africa is a lot of people. The trip goes through without an
+ * estimate and the driver sorts the price out in the chat.
+ */
+export const typedAddress = (text) => ({
+  label: text.trim(),
+  lat: null,
+  lng: null,
+  kind: 'typed',
+})
+
+/** Can this leg be routed and priced? */
+export const isLocatable = (leg) =>
+  Boolean(leg && Number.isFinite(leg.lat) && Number.isFinite(leg.lng))
+
 // ---------------------------------------------------------------------------
 // Distance
 // ---------------------------------------------------------------------------
@@ -170,7 +234,9 @@ export async function routeShape(a, b, { signal } = {}) {
  * number, even with no network.
  */
 export async function roadDistanceBetween(a, b, { signal } = {}) {
-  if (!a || !b) return null
+  // An address we could not find has no point on the map, so there is nothing
+  // to measure. Callers treat null as "no estimate" and say so.
+  if (!isLocatable(a) || !isLocatable(b)) return null
 
   const key = cacheKey(a, b)
   if (routeCache.has(key)) return routeCache.get(key)

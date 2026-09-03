@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { searchPlaces, leadingHouseNumber } from '../lib/geocode.js'
+import { searchPlaces, leadingHouseNumber, currentLocation, typedAddress } from '../lib/geocode.js'
 import Icon from './Icon.jsx'
 
 // A text box that suggests places as you type: your own suburbs first, then
@@ -11,11 +11,13 @@ import Icon from './Icon.jsx'
 const DEBOUNCE_MS = 450
 const MIN_CHARS = 3
 
-export default function AddressField({ label, value, onChange, placeholder }) {
+export default function AddressField({ label, value, onChange, placeholder, allowCurrent = false }) {
   const [text, setText] = useState(value?.label ?? '')
   const [results, setResults] = useState([])
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [locating, setLocating] = useState(false)
+  const [locateError, setLocateError] = useState('')
   const boxRef = useRef(null)
   const abortRef = useRef(null)
 
@@ -103,6 +105,35 @@ export default function AddressField({ label, value, onChange, placeholder }) {
         )}
       </div>
 
+      {/* Pick-up only: someone knows where they are standing, and typing your
+          own address is the most tedious part of asking for a bakkie. Nobody
+          can usefully do this for a drop-off they are not at. */}
+      {allowCurrent && !value && (
+        <button
+          className="addressfield-here"
+          disabled={locating}
+          onClick={async () => {
+            setLocating(true)
+            setLocateError('')
+            try {
+              const here = await currentLocation()
+              onChange(here)
+              setText(here.label)
+              setResults([])
+              setOpen(false)
+            } catch (err) {
+              setLocateError(err.message)
+            }
+            setLocating(false)
+          }}
+        >
+          <Icon name="pin" size={16} />
+          {locating ? 'Finding you…' : 'Use my current location'}
+        </button>
+      )}
+
+      {locateError && <p className="addressfield-warn">{locateError}</p>}
+
       {open && (busy || results.length > 0) && (
         <ul className="addressfield-list">
           {busy && results.length === 0 && <li className="addressfield-busy">Searching…</li>}
@@ -120,9 +151,29 @@ export default function AddressField({ label, value, onChange, placeholder }) {
         </ul>
       )}
 
+      {/* Plenty of South African streets simply are not in OpenStreetMap.
+          Refusing what someone typed would strand them, so it is kept as
+          written - the trip just goes through without an estimate and the
+          price gets sorted out in the chat. */}
       {open && !busy && text.trim().length >= MIN_CHARS && results.length === 0 && (
-        <p className="addressfield-empty">
-          Nothing found. Try the suburb name on its own.
+        <div className="addressfield-notfound">
+          <p>We can&rsquo;t find that on the map. Check the spelling, or use it as you typed it.</p>
+          <button
+            className="btn secondary full"
+            onClick={() => {
+              onChange(typedAddress(text))
+              setOpen(false)
+            }}
+          >
+            Use &ldquo;{text.trim()}&rdquo; anyway
+          </button>
+          <em>No price estimate without a map location - your driver will quote you.</em>
+        </div>
+      )}
+
+      {value?.kind === 'typed' && (
+        <p className="addressfield-warn">
+          Not found on the map, so double-check this is right. No estimate for this trip.
         </p>
       )}
 

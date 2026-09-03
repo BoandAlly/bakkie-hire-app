@@ -6,7 +6,7 @@ import { roadKm } from '../lib/geo.js'
 import Icon, { StarIcon } from '../components/Icon.jsx'
 import AddressField from '../components/AddressField.jsx'
 import TripMap from '../components/TripMap.jsx'
-import { roadDistanceBetween, fullAddress } from '../lib/geocode.js'
+import { roadDistanceBetween, fullAddress, isLocatable } from '../lib/geocode.js'
 import { loadTrip, saveTrip, isTripSet } from '../lib/trip.js'
 
 // Everything within reach, sorted however the customer wants to look at it.
@@ -80,6 +80,9 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     }
     // Coordinates, not object identity — a re-render must not re-fetch.
   }, [tripSet, trip.pickup?.lat, trip.pickup?.lng, trip.dropoff?.lat, trip.dropoff?.lng])
+
+  // An address the map could not place: the trip is real, the estimate is not.
+  const unlocatable = tripSet && (!isLocatable(trip.pickup) || !isLocatable(trip.dropoff))
 
   const setLeg = (patch) => {
     const next = { ...trip, ...patch }
@@ -170,6 +173,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     <div className="trippicker">
       <AddressField
         label="Pick-up"
+        allowCurrent
         value={trip.pickup}
         onChange={(p) => setLeg({ pickup: p })}
         placeholder="Street, place or suburb"
@@ -205,8 +209,13 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
       )}
 
       {tripSet && (
-        <p className="tripstatus">
-          {tripKm == null ? (
+        <p className={unlocatable ? 'tripstatus warn' : 'tripstatus'}>
+          {unlocatable ? (
+            <>
+              We couldn&rsquo;t find that address on the map, so there&rsquo;s no estimate
+              for this trip &mdash; check it reads correctly and your driver will quote you.
+            </>
+          ) : tripKm == null ? (
             'Measuring the route…'
           ) : (
             <>

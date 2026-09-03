@@ -9,17 +9,14 @@ export const TRIP_KEY = 'bakkie.trip.v1'
 
 const BLANK = { pickup: null, dropoff: null }
 
-// A leg is {label, lat, lng, kind, detail}. Anything else — including trips
-// saved before addresses existed, when these were plain suburb names — is
-// dropped rather than half-read, so an old value can't produce a bad quote.
+// A leg is {label, lat, lng, kind, detail}. Coordinates are optional: an
+// address the map could not find is still a real place someone is standing at,
+// and it goes through without an estimate rather than being refused.
+//
+// Anything without a label — including trips saved before addresses existed,
+// when these were plain suburb names — is dropped rather than half-read.
 const validLeg = (v) =>
-  v &&
-  typeof v === 'object' &&
-  typeof v.label === 'string' &&
-  Number.isFinite(v.lat) &&
-  Number.isFinite(v.lng)
-    ? v
-    : null
+  v && typeof v === 'object' && typeof v.label === 'string' && v.label.trim() ? v : null
 
 export function loadTrip() {
   try {
