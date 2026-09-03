@@ -27,7 +27,7 @@ const PAYLOADS = [
   { kg: 4000, label: '4 ton+' },
 ]
 
-export default function Nearby({ listings, coords, areaName, onOpen, onChangeArea }) {
+export default function Nearby({ listings, coords, areaName, onOpen, onChangeArea, ratings = {} }) {
   const [query, setQuery] = useState('')
   const [classFilter, setClassFilter] = useState('')
   const [roundTripOnly, setRoundTripOnly] = useState(false)
@@ -64,7 +64,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         case 'price':
           return a.refPrice - b.refPrice || byNear(a, b)
         case 'rating':
-          return b.listing.rating - a.listing.rating || byNear(a, b)
+          return scoreOf(b.listing, ratings) - scoreOf(a.listing, ratings) || byNear(a, b)
         case 'payload':
           return b.listing.payloadKg - a.listing.payloadKg || byNear(a, b)
         default:
@@ -226,6 +226,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
               key={listing.id}
               listing={listing}
               km={km}
+              rated={ratings[listing.id]}
               onOpen={() => onOpen(listing.id)}
             />
           ))}
@@ -250,7 +251,14 @@ function matches(listing, q) {
   return hay.includes(q)
 }
 
-function VehicleCard({ listing, km, onOpen }) {
+// A listing shows its real customer average once it has one. Until then it
+// keeps its seeded star, labelled 'No ratings yet' so the number is not read
+// as something the driver earned.
+function scoreOf(listing, ratings) {
+  return ratings[listing.id]?.average ?? listing.rating
+}
+
+function VehicleCard({ listing, km, onOpen, rated }) {
   const cls = classById(listing.vehicleClass)
   return (
     <button
@@ -277,9 +285,10 @@ function VehicleCard({ listing, km, onOpen }) {
       <span className="card-body">
         <span className="card-top">
           <strong>{cls?.name}</strong>
-          <span className="rating">
+          <span className={rated ? 'rating' : 'rating unrated'}>
             <StarIcon size={14} />
-            {listing.rating.toFixed(1)}
+            {(rated?.average ?? listing.rating).toFixed(1)}
+            <em>{rated ? `(${rated.count})` : 'No ratings yet'}</em>
           </span>
         </span>
 

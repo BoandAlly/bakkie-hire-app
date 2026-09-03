@@ -10,6 +10,7 @@ import {
   repliesWaiting,
   lastMessage,
   isUpcoming,
+  ratingsByListing,
 } from './lib/threads.js'
 import { scheduleBookingReminders, cancelBookingReminders } from './lib/notify.js'
 import {
@@ -174,6 +175,10 @@ export default function App() {
   }
 
   const driver = session.driverEmail ? driverFor(drivers, session.driverEmail) : null
+  // Real customer ratings per listing. Listings with none keep their seeded
+  // star, shown as unrated — see Nearby/TruckDetail.
+  const listingRatings = useMemo(() => ratingsByListing(threads), [threads])
+
   const myListings = useMemo(
     () => (driver ? listingsForPhone(listings, driver.phone) : []),
     [listings, driver],
@@ -499,6 +504,7 @@ export default function App() {
             areaName={location.areaName}
             onOpen={openTruck}
             onChangeArea={location.reset}
+            ratings={listingRatings}
           />
         )}
 
@@ -607,6 +613,7 @@ export default function App() {
             listing={current}
             coords={location.coords}
             signedIn={Boolean(customer)}
+            rated={listingRatings[current.id]}
             onBack={() => go({ name: 'explore' })}
             onMessage={(id) =>
               customer

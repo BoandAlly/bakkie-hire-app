@@ -162,6 +162,30 @@ export const bookingsAwaitingCustomerRating = (thread) =>
     (m) => m.kind === 'booking' && m.booking?.status === 'done' && !m.booking.driverRating,
   )
 
+/**
+ * Real customer ratings, grouped by the listing they were given to:
+ * `{ [listingId]: { average, count } }`.
+ *
+ * Only listings with at least one real rating appear. A listing that's missing
+ * from the result has never been rated, and the card falls back to its seeded
+ * star — labelled as unrated, so nobody reads it as earned.
+ */
+export function ratingsByListing(threads) {
+  const collected = {}
+  for (const t of threads) {
+    for (const m of t.messages) {
+      if (m.kind !== 'booking' || !m.booking?.driverRating) continue
+      ;(collected[t.listingId] ??= []).push(m.booking.driverRating)
+    }
+  }
+  return Object.fromEntries(
+    Object.entries(collected).map(([id, list]) => [
+      id,
+      { average: averageRating(list), count: list.length },
+    ]),
+  )
+}
+
 /** One-decimal mean, or 0 for an empty list. */
 export const averageRating = (nums) =>
   nums.length ? Math.round((nums.reduce((s, n) => s + n, 0) / nums.length) * 10) / 10 : 0

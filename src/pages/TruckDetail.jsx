@@ -8,7 +8,14 @@ import Icon, { StarIcon } from '../components/Icon.jsx'
 // Everything a customer needs to decide, and one button. Dates, times and the
 // final price get sorted out in the chat, not here.
 
-export default function TruckDetail({ listing, coords, onBack, onMessage, signedIn = true }) {
+export default function TruckDetail({
+  listing,
+  coords,
+  onBack,
+  onMessage,
+  signedIn = true,
+  rated = null,
+}) {
   const [photoIndex, setPhotoIndex] = useState(0)
   const cls = classById(listing.vehicleClass)
   const base = placeByName(listing.baseLocation)
@@ -63,10 +70,16 @@ export default function TruckDetail({ listing, coords, onBack, onMessage, signed
               {km != null && ` · ${km} km away`}
             </em>
           </span>
-          <span className="rating">
+          {/* The count used to show jobs completed, which reads as a number of
+              ratings and isn't one. It's the real rating count, or nothing. */}
+          <span className={rated ? 'rating' : 'rating unrated'}>
             <StarIcon size={15} />
-            {listing.rating.toFixed(1)}
-            <em>({listing.jobsCompleted})</em>
+            {(rated?.average ?? listing.rating).toFixed(1)}
+            <em>
+              {rated
+                ? `from ${rated.count} ${rated.count === 1 ? 'trip' : 'trips'}`
+                : 'No ratings yet'}
+            </em>
           </span>
         </div>
 
