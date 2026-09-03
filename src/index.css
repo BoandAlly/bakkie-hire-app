@@ -1642,3 +1642,11 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
   border: 2px solid #fff; box-shadow: var(--shadow-sm);
   color: #fff; font-size: 12px; font-weight: 800;
 }
+
+/* Note under the map about dragging a pin to the exact spot. */
+.tripmap-hint {
+  margin: -6px 0 12px; padding: 0 2px;
+  font-size: 12.5px; line-height: 1.5; color: var(--ink-3);
+}
+.mappin { cursor: grab; }
+.mappin:active { cursor: grabbing; }

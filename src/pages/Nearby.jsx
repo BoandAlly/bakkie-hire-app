@@ -252,7 +252,19 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
 
       {/* The route, drawn. It answers "is that the way I'd actually go" in a
           way a number of kilometres never does. */}
-      <TripMap pickup={trip.pickup} dropoff={trip.dropoff} height={190} />
+      <TripMap
+        pickup={trip.pickup}
+        dropoff={trip.dropoff}
+        height={190}
+        onMove={(leg, coords) => {
+          // Keep the address text and any house number they typed; only the
+          // point moves. The label still reads sensibly, and the distance,
+          // price and route all follow the pin from here on.
+          const current = trip[leg]
+          if (!current) return
+          setLeg({ [leg]: { ...current, ...coords, kind: 'pinned' } })
+        }}
+      />
 
       <div className="searchbar">
         <Icon name="search" size={18} className="dim" />
