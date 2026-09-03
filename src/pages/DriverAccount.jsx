@@ -7,8 +7,10 @@ import {
   withinWorkingHours,
 } from '../lib/drivers.js'
 import { formatPhone } from '../lib/session.js'
+import { shrinkImage } from '../lib/photos.js'
 import { driverRatingsReceived, averageRating, timeLabel } from '../lib/threads.js'
 import Icon, { Stars } from '../components/Icon.jsx'
+import { useState } from 'react'
 
 // Profile, paperwork and what you pay us. Kept off the working screens so the
 // driver only comes here when something needs sorting out.
@@ -24,6 +26,8 @@ export default function DriverAccount({
   onSignOut,
   onReset,
 }) {
+  const [photoBusy, setPhotoBusy] = useState(false)
+  const [photoError, setPhotoError] = useState('')
   const vState = verificationState(driver)
   const hours = hoursFor(driver)
   const working = withinWorkingHours(driver)
@@ -40,10 +44,40 @@ export default function DriverAccount({
       </header>
 
       <div className="profile">
-        <span className="profile-avatar">{initials(driver.name)}</span>
+        {/* Tapping the avatar is the whole interaction — no separate edit screen
+            for one picture. */}
+        <label className="profile-avatar editable">
+          {driver.photo ? (
+            <img src={driver.photo} alt="" />
+          ) : (
+            <span>{initials(driver.name)}</span>
+          )}
+          <input
+            type="file"
+            accept="image/*"
+            onChange={async (e) => {
+              const file = e.target.files?.[0]
+              e.target.value = ''
+              if (!file) return
+              setPhotoBusy(true)
+              try {
+                onUpdateDriver({ photo: await shrinkImage(file, { maxPx: 320, quality: 0.8 }) })
+                setPhotoError('')
+              } catch {
+                setPhotoError('That picture couldn’t be read. Try another one.')
+              }
+              setPhotoBusy(false)
+            }}
+          />
+          <span className="profile-avatar-edit">{photoBusy ? '…' : 'Edit'}</span>
+        </label>
         <span>
           <strong>{driver.name}</strong>
           <em>{formatPhone(driver.phone)}</em>
+          {!driver.photo && !photoBusy && (
+            <em className="profile-nudge">Add a photo so customers know who to expect</em>
+          )}
+          {photoError && <em className="profile-nudge error">{photoError}</em>}
         </span>
         {vState === 'verified' && (
           <span className="status on">

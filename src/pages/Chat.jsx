@@ -459,6 +459,11 @@ function BookingForm({ listing, customerName, onClose, onBook }) {
       dropoff,
       driverName: listing.ownerName,
       driverPhone: listing.ownerPhone,
+      // Copied onto the booking rather than read live, so the customer's ticket
+      // still shows the vehicle they agreed to even if the driver later edits
+      // the listing or takes it down.
+      vehicleReg: listing.registration ?? '',
+      vehicleName: listing.title,
       customerName,
     })
   }
@@ -581,6 +586,18 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto }) {
         <Row label="From" value={b.pickup} />
         <Row label="To" value={b.dropoff} />
       </div>
+      {/* Who and what is turning up. Shown once a pickup exists, so the
+          customer can recognise the vehicle in the street. */}
+      {(b.vehicleReg || b.vehicleName) && (
+        <div className="bookingcard-vehicle">
+          <Icon name="truck" size={17} />
+          <span>
+            {b.vehicleReg && <strong>{b.vehicleReg}</strong>}
+            {b.vehicleName && <em>{b.vehicleName}</em>}
+          </span>
+        </div>
+      )}
+
       <div className="bookingcard-foot">
         <span>
           <strong>{b.driverName}</strong>

@@ -179,6 +179,10 @@ export default function App() {
   // star, shown as unrated — see Nearby/TruckDetail.
   const listingRatings = useMemo(() => ratingsByListing(threads), [threads])
 
+  // A listing stores its owner's phone; the face lives on the driver account.
+  const photoForListing = (l) =>
+    Object.values(drivers).find((d) => samePhone(d.phone, l?.ownerPhone))?.photo ?? ''
+
   const myListings = useMemo(
     () => (driver ? listingsForPhone(listings, driver.phone) : []),
     [listings, driver],
@@ -623,6 +627,7 @@ export default function App() {
             coords={location.coords}
             signedIn={Boolean(customer)}
             rated={listingRatings[current.id]}
+            ownerPhoto={photoForListing(current)}
             onBack={() => go({ name: 'explore' })}
             onMessage={(id) =>
               customer

@@ -70,6 +70,9 @@ export const blankDriver = ({ name, email, phone, password }) => ({
   password,
   docs: { idDoc: false, licence: false, reg: false },
   verified: false,
+  // A face, so a customer knows who is turning up. Empty until they add one;
+  // initials stand in until then rather than a blank circle.
+  photo: '',
   availableNow: false,
   hours: { ...DEFAULT_HOURS },
   joined: new Date().toISOString().slice(0, 7),

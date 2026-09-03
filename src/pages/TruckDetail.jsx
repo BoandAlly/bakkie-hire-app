@@ -15,6 +15,7 @@ export default function TruckDetail({
   onMessage,
   signedIn = true,
   rated = null,
+  ownerPhoto = '',
 }) {
   const [photoIndex, setPhotoIndex] = useState(0)
   const cls = classById(listing.vehicleClass)
@@ -62,7 +63,13 @@ export default function TruckDetail({
         <h1>{listing.title}</h1>
 
         <div className="ownerline">
-          <span className="avatar sm">{initials(listing.ownerName)}</span>
+          <span className="avatar sm">
+            {ownerPhoto ? (
+              <img src={ownerPhoto} alt="" />
+            ) : (
+              initials(listing.ownerName)
+            )}
+          </span>
           <span>
             <strong>{listing.ownerName}</strong>
             <em>

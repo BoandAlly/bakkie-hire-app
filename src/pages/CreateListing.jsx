@@ -11,6 +11,7 @@ const BLANK = {
   ownerPhone: '',
   vehicleClass: '',
   title: '',
+  registration: '',
   photos: [],
   bedLengthM: '',
   bedWidthM: '',
@@ -220,6 +221,21 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
               placeholder="e.g. Toyota Hilux single cab — clean load bed"
               onChange={(e) => set({ title: e.target.value })}
             />
+          </label>
+
+          {/* Shown to the customer once a pickup is confirmed, so they know
+              which vehicle is arriving. Not shown while browsing. */}
+          <label className="field wide">
+            <span>Number plate</span>
+            <input
+              value={form.registration}
+              placeholder="e.g. ND 123-456"
+              onChange={(e) => set({ registration: e.target.value.toUpperCase() })}
+            />
+            <em className="fieldhint">
+              Only shown to a customer after they&rsquo;ve confirmed a pickup with you, so
+              they can recognise the vehicle when it arrives.
+            </em>
           </label>
 
           <label className="field">
