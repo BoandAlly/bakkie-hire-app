@@ -183,46 +183,6 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     </div>
   )
 
-  // Nothing to show until we know the job — a rate per km isn't an answer to
-  // "what will this cost me", and it's the first thing anyone wants.
-  if (!tripSet || editingTrip) {
-    return (
-      <div className="screen">
-        <header className="screen-head">
-          <h1>Where are you moving to?</h1>
-          <p className="sub">
-            Tell us the trip and we&rsquo;ll show you what each driver would charge for it.
-          </p>
-        </header>
-
-        {tripPicker}
-
-        {trip.pickup && trip.dropoff && trip.pickup.label === trip.dropoff.label && (
-          <p className="blockhint error">Pick two different places.</p>
-        )}
-
-        <button
-          className="btn primary full"
-          disabled={!tripSet}
-          onClick={() => setEditingTrip(false)}
-        >
-          <Icon name="search" size={17} />
-          {!tripSet
-            ? 'Show me drivers'
-            : tripKm == null
-              ? 'Measuring the route…'
-              : `Show me drivers · ${tripKm} km`}
-        </button>
-
-        {editingTrip && (
-          <button className="btn secondary full" onClick={() => setEditingTrip(false)}>
-            Cancel
-          </button>
-        )}
-      </div>
-    )
-  }
-
   return (
     <div className="screen wide">
       <header className="screen-head">
@@ -234,21 +194,27 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         </button>
       </header>
 
-      {/* The job being priced, always visible and always changeable. */}
-      <button className="tripbar" onClick={() => setEditingTrip(true)}>
-        <Icon name="pin" size={17} />
-        <span className="tripbar-route">
-          <strong>
-            {fullAddress(trip.pickup)} &rarr; {fullAddress(trip.dropoff)}
-          </strong>
-          <em>
-            {tripKm == null
-              ? 'Measuring the route…'
-              : `${tripKm} km · prices below are for this trip`}
-          </em>
-        </span>
-        <Icon name="chevron" size={15} className="dim" />
-      </button>
+      {/* The trip sits above the drivers rather than gating them. Someone who
+          just wants to see who is around and what they charge can do that; the
+          moment both ends are filled in, the same list starts showing what each
+          driver would charge for that actual job. */}
+      {tripPicker}
+
+      {trip.pickup && trip.dropoff && trip.pickup.label === trip.dropoff.label && (
+        <p className="blockhint error">Pick two different places.</p>
+      )}
+
+      {tripSet && (
+        <p className="tripstatus">
+          {tripKm == null ? (
+            'Measuring the route…'
+          ) : (
+            <>
+              <strong>{tripKm} km</strong> &middot; prices below are for this trip
+            </>
+          )}
+        </p>
+      )}
 
       {/* The route, drawn. It answers "is that the way I'd actually go" in a
           way a number of kilometres never does. */}

@@ -1667,3 +1667,10 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
 }
 .mappin { cursor: grab; }
 .mappin:active { cursor: grabbing; }
+
+/* Distance line under the address fields, once a trip is known. */
+.tripstatus {
+  margin: -4px 0 12px; padding: 0 2px;
+  font-size: 13px; color: var(--ink-3);
+}
+.tripstatus strong { color: var(--ink); font-weight: 700; }
