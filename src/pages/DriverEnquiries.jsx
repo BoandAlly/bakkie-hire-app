@@ -1,5 +1,12 @@
 import { VehicleSilhouette } from '../data/vehicleClasses.jsx'
-import { lastMessage, timeLabel, bookingSummary } from '../lib/threads.js'
+import {
+  lastMessage,
+  timeLabel,
+  bookingSummary,
+  bookingDateLabel,
+  upcomingTrips,
+} from '../lib/threads.js'
+import { rand } from '../lib/pricing.js'
 import Icon from '../components/Icon.jsx'
 
 // The driver's first screen. Enquiries are the only thing here that earns them
@@ -17,7 +24,10 @@ export default function DriverEnquiries({ driver, listings, threads, onOpenChat 
 
   const awaiting = myThreads.filter((t) => lastMessage(t)?.from === 'customer').length
   const views = listings.reduce((n, l) => n + (l.views ?? 0), 0)
-  const live = listings.filter((l) => !l.paused).length
+
+  // "Live" counts work, not adverts. A driver looking at this wants to know
+  // what they have on, and the next one first.
+  const trips = upcomingTrips(threads, myIds)
 
   return (
     <div className="screen">
@@ -33,8 +43,44 @@ export default function DriverEnquiries({ driver, listings, threads, onOpenChat 
       <div className="statrow">
         <StatTile icon="message" value={awaiting} label="To reply" accent={awaiting > 0} />
         <StatTile icon="eye" value={views} label="Views" />
-        <StatTile icon="truck" value={live} label="Live" />
+        <StatTile icon="truck" value={trips.length} label="Live" accent={trips.length > 0} />
       </div>
+
+      {/* The next job, and what follows it. Pulled off the customers' own trip
+          messages, so it is always what was actually agreed rather than a
+          separate copy that can drift. */}
+      {trips.length > 0 && (
+        <section className="panel">
+          <h2>Coming up</h2>
+          <div className="list tight">
+            {trips.map(({ booking: b, thread: t }, i) => (
+              <button
+                key={b.id}
+                className="triprow"
+                onClick={() => onOpenChat(t.listingId, t.customerEmail)}
+              >
+                <span className={i === 0 ? 'triprow-when next' : 'triprow-when'}>
+                  {b.asap ? 'ASAP' : bookingDateLabel(b.date)}
+                  <em>{b.asap ? 'waiting' : b.time}</em>
+                </span>
+                <span className="triprow-body">
+                  <strong>
+                    {b.pickup} &rarr; {b.dropoff}
+                  </strong>
+                  <em>
+                    {b.customerName}
+                    {b.goods ? ` · ${b.goods}` : ''}
+                    {b.price ? ` · ${rand(b.price)}` : ''}
+                  </em>
+                </span>
+                <span className={b.status === 'confirmed' ? 'triprow-tag on' : 'triprow-tag'}>
+                  {b.status === 'confirmed' ? 'Confirmed' : 'Not confirmed'}
+                </span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {myThreads.length === 0 ? (
         <div className="blank">
@@ -55,7 +101,7 @@ export default function DriverEnquiries({ driver, listings, threads, onOpenChat 
               <button
                 key={t.id}
                 className={waiting ? 'row unread' : 'row'}
-                onClick={() => onOpenChat(t.listingId)}
+                onClick={() => onOpenChat(t.listingId, t.customerEmail)}
               >
                 <span className="avatar">
                   {listing?.photos?.[0] ? (

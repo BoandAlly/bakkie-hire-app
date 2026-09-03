@@ -11,6 +11,7 @@ import {
   lastMessage,
   isUpcoming,
   ratingsByListing,
+  clashingTrip,
 } from './lib/threads.js'
 import { scheduleBookingReminders, cancelBookingReminders } from './lib/notify.js'
 import {
@@ -607,7 +608,7 @@ export default function App() {
             driver={driver}
             listings={myListings}
             threads={threads}
-            onOpenChat={(id) => go({ name: 'opchat', id })}
+            onOpenChat={(id, customerEmail) => go({ name: 'opchat', id, customerEmail })}
           />
         )}
 
@@ -659,10 +660,18 @@ export default function App() {
         {viewName === 'opchat' && current && (
           <Chat
             listing={current}
-            thread={threadFor(threads, current.id)}
+            // Without the customer's email this opened whichever thread came
+            // first, so a vehicle with two enquiries always showed the same
+            // person however you got there.
+            thread={threadFor(threads, current.id, view.customerEmail ?? null)}
             onSend={sendMessage}
             onBack={() => go({ name: 'enquiries' })}
             onPatchBooking={patchBooking}
+            // Checked against every vehicle this driver runs, not just the one
+            // being booked - they can only drive one at a time.
+            onClash={(booking) =>
+              clashingTrip(threads, new Set(myListings.map((l) => l.id)), booking)
+            }
             viewAs="owner"
           />
         )}

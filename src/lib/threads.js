@@ -66,7 +66,13 @@ export function bookingDateLabel(dateStr) {
 
 /** One-liner for inbox previews and the message's text fallback. */
 export const bookingSummary = (b) => {
-  const when = `${bookingDateLabel(b.date)}${b.time ? ` at ${b.time}` : ''}, ${b.pickup} → ${b.dropoff}`
+  // Carries what is being moved as well as when and where: the inbox preview is
+  // often all a driver reads before deciding whether to open the thread.
+  const whenPart = b.asap
+    ? 'As soon as possible'
+    : `${bookingDateLabel(b.date)}${b.time ? ` at ${b.time}` : ''}`
+  const what = b.goods ? `${b.goods} — ` : ''
+  const when = `${whenPart}, ${what}${b.pickup} → ${b.dropoff}`
   const lead =
     b.status === 'cancelled'
       ? 'Pickup cancelled'
@@ -145,6 +151,59 @@ function collectBookings(threads, listingIds, pick) {
     }
   }
   return out
+}
+
+/**
+ * The driver's actual work: trips that are agreed or still being agreed, and
+ * haven't happened yet. Soonest first, because the next one is the only one
+ * that matters when you open the app on a Saturday morning.
+ */
+export function upcomingTrips(threads, listingIds) {
+  const out = []
+  for (const t of threads) {
+    if (listingIds && !listingIds.has(t.listingId)) continue
+    for (const m of t.messages) {
+      const b = m.booking
+      if (m.kind !== 'booking' || !b) continue
+      if (b.status === 'cancelled' || b.status === 'done') continue
+      // "As soon as possible" has no fixed time, so it can't be sorted by one
+      // and can't clash with anything — it sits at the top as work waiting.
+      out.push({ booking: b, thread: t, at: b.asap ? null : bookingDateTime(b) })
+    }
+  }
+  return out
+    .filter((x) => x.asap || !x.at || x.at.getTime() > Date.now())
+    .sort((a, b) => {
+      if (!a.at) return -1
+      if (!b.at) return 1
+      return a.at - b.at
+    })
+}
+
+/**
+ * Is this driver already committed at the same time? Two vehicles cannot be in
+ * two places at once, and a double booking is discovered at the worst possible
+ * moment — on the morning, by the customer left standing outside.
+ *
+ * Anything starting within `windowMin` either side counts as a clash.
+ */
+export function clashingTrip(threads, listingIds, booking, windowMin = 90) {
+  const when = bookingDateTime(booking)
+  if (!when || booking.asap) return null
+
+  for (const t of threads) {
+    if (listingIds && !listingIds.has(t.listingId)) continue
+    for (const m of t.messages) {
+      const b = m.booking
+      if (m.kind !== 'booking' || !b) continue
+      if (b.id === booking.id) continue
+      if (b.status !== 'confirmed') continue
+      const other = bookingDateTime(b)
+      if (!other) continue
+      if (Math.abs(other - when) < windowMin * 60000) return b
+    }
+  }
+  return null
 }
 
 /** Ratings a driver has received from customers, newest first. */

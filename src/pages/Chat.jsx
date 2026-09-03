@@ -44,6 +44,7 @@ export default function Chat({
   onSend,
   onBack,
   onPatchBooking,
+  onClash = null,
   viewAs = 'customer',
 }) {
   const [draft, setDraft] = useState('')
@@ -123,21 +124,27 @@ export default function Chat({
       </header>
 
       <div className="chat-log" ref={logRef}>
-        {messages.length === 0 && (
+        {/* A driver decides whether to take a job from when, what and where.
+            Asking those three across several back-and-forth messages wastes
+            both people's evening, so the first message carries them or there is
+            no first message. */}
+        {messages.length === 0 && isCustomer && (
+          <TripRequest
+            listing={listing}
+            firstName={firstName}
+            customerName={thread?.customerName ?? 'Customer'}
+            onSend={(booking) =>
+              onSend(listing.id, 'customer', bookingSummary(booking), {
+                kind: 'booking',
+                booking,
+              })
+            }
+          />
+        )}
+
+        {messages.length === 0 && !isCustomer && (
           <div className="chat-intro">
-            <p>
-              Say what you need moved, where from and where to, and when. Sort the price out
-              between you.
-            </p>
-            {viewAs === 'customer' && (
-              <div className="suggestions">
-                {OPENERS.map((o) => (
-                  <button key={o} onClick={() => send(o)}>
-                    {o}
-                  </button>
-                ))}
-              </div>
-            )}
+            <p>Nothing here yet. When a customer sends you a trip it appears here.</p>
           </div>
         )}
 
@@ -150,6 +157,7 @@ export default function Chat({
               viewAs={viewAs}
               onPatch={onPatchBooking}
               onPhoto={postPhoto}
+              onClash={onClash}
             />
           ) : m.kind === 'photo' && m.photo ? (
             <PhotoMessage key={i} m={m} mine={m.from === viewAs} />
@@ -188,26 +196,29 @@ export default function Chat({
         </button>
       )}
 
+      {/* The driver no longer creates the booking - the customer states their
+          own trip. A driver who can't make that time asks for a different one,
+          which the customer can accept or turn down; it is their move, not
+          something that gets changed for them. */}
       {!isCustomer && bookOpen && (
-        <BookingForm
-          listing={listing}
-          customerName={thread?.customerName ?? 'Customer'}
+        <RescheduleRequest
+          firstName={thread?.customerName?.split(' ')[0] ?? 'the customer'}
           onClose={() => setBookOpen(false)}
-          onBook={(booking) => {
-            onSend(listing.id, 'owner', bookingSummary(booking), { kind: 'booking', booking })
+          onAsk={(text) => {
+            send(text)
             setBookOpen(false)
           }}
         />
       )}
 
-      {!isCustomer && (
+      {!isCustomer && messages.length > 0 && (
         <button
           className={bookOpen ? 'farebtn on' : 'farebtn'}
           onClick={() => setBookOpen((v) => !v)}
           aria-expanded={bookOpen}
         >
           <Icon name="route" size={18} />
-          <span>Book a pickup</span>
+          <span>Ask to reschedule</span>
           <Icon name="chevron" size={15} className="dim" />
         </button>
       )}
@@ -562,7 +573,7 @@ function BookingForm({ listing, customerName, onClose, onBook }) {
 // The ticket itself — the same card whichever side is looking at it, but the
 // action at the bottom depends on who's looking and where the trip's got to:
 // the driver marks it done and rates the customer; the customer rates the driver.
-function BookingCard({ booking, at, viewAs, onPatch, onPhoto }) {
+function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) {
   const b = booking
   const isDriver = viewAs === 'owner'
   const status = b.status ?? 'pending'
@@ -606,6 +617,20 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto }) {
         : { icon: 'route', label: 'Pickup requested' }
 
   const confirmPickup = () => {
+    // A driver cannot be in two places at once, and a double booking surfaces
+    // at the worst possible moment - on the morning, to the customer left
+    // waiting outside. Checked here rather than warned about later.
+    if (isDriver && onClash) {
+      const clash = onClash(b)
+      if (clash) {
+        window.alert(
+          `You're already confirmed with ${clash.customerName} at ${clash.time} that day ` +
+            `(${clash.pickup} to ${clash.dropoff}).\n\n` +
+            `Ask one of them to move, rather than taking both.`,
+        )
+        return
+      }
+    }
     const key = isDriver ? 'driverConfirmed' : 'customerConfirmed'
     patch({ [key]: true, ...(otherConfirmed ? { status: 'confirmed' } : {}) })
   }
@@ -632,11 +657,49 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto }) {
         <strong>{head.label}</strong>
         <span>{timeLabel(at)}</span>
       </div>
+      {/* The decision is at the top, before the detail, because that is what
+          the person opening this is here to make. */}
+      {pending && (isDriver ? !mineConfirmed : customerCanConfirm) && (
+        <div className="bookingcard-quick">
+          <button
+            className="btn go"
+            disabled={isDriver && !b.price}
+            onClick={() => {
+              if (isDriver && !b.price) return
+              if (
+                !window.confirm(
+                  isDriver
+                    ? `Confirm at ${rand(b.price)}? The price is fixed once you do.`
+                    : `Accept this pickup at ${rand(b.price)}?`,
+                )
+              )
+                return
+              confirmPickup()
+            }}
+          >
+            <Icon name="check" size={17} />
+            {isDriver
+              ? b.price
+                ? `Quick confirm - ${rand(b.price)}`
+                : 'Set a price to confirm'
+              : `Quick confirm - ${rand(b.price)}`}
+          </button>
+          <button className="btn ghost" onClick={cancelPickup}>
+            Cancel
+          </button>
+        </div>
+      )}
+
       <div className="bookingcard-rows">
-        <Row label="Date" value={bookingDateLabel(b.date)} />
-        <Row label="Time" value={b.time} />
+        <Row label="Date" value={b.asap ? 'As soon as possible' : bookingDateLabel(b.date)} />
+        {!b.asap && <Row label="Time" value={b.time} />}
+        {b.goods && <Row label="Carrying" value={b.goods} />}
         <Row label="From" value={b.pickup} />
         <Row label="To" value={b.dropoff} />
+        {b.distanceKm ? <Row label="Distance" value={`${b.distanceKm} km`} /> : null}
+        {b.accompany && (
+          <Row label="Customer" value={b.liftBack ? 'Travelling, needs a lift back' : 'Travelling with the goods'} />
+        )}
       </div>
 
       {/* The price. It belongs to the driver — they set it, they can change it,
@@ -920,6 +983,280 @@ function StarPicker({ value, onChange }) {
         ))}
       </div>
       <span className="starpick-value">{shown ? shown.toFixed(1) : '—'}</span>
+    </div>
+  )
+}
+
+// The customer's opening message: when, what and where, in one go.
+//
+// This replaces the old driver-side "Book a pickup" form. The trip belongs to
+// the customer, so they are the one who states it; a driver who cannot make it
+// asks to reschedule rather than editing someone else's plans.
+function TripRequest({ listing, firstName, customerName, onSend }) {
+  const trip = loadTrip()
+  const haveTrip = isTripSet(trip)
+
+  const [goods, setGoods] = useState('')
+  const [goodsOther, setGoodsOther] = useState('')
+  const [when, setWhen] = useState('now')
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
+  const [accompany, setAccompany] = useState(false)
+  const [liftBack, setLiftBack] = useState(false)
+  const [declared, setDeclared] = useState(false)
+  const [km, setKm] = useState(null)
+
+  useEffect(() => {
+    if (!haveTrip) return
+    let alive = true
+    roadDistanceBetween(trip.pickup, trip.dropoff).then((d) => alive && setKm(d))
+    return () => {
+      alive = false
+    }
+  }, [haveTrip, trip.pickup?.lat, trip.dropoff?.lat])
+
+  const goodsText = goods === 'Something else' ? goodsOther.trim() : goods
+
+  // A lift back is the same journey again, so it is charged again. People
+  // assume it is a small extra and it is not - say so where the choice is made.
+  const billedKm = km == null ? null : liftBack ? km * 2 : km
+  const est = billedKm ? quote(listing, { distanceKm: billedKm, helpers: 0 }) : null
+  const oneWayEst = km ? quote(listing, { distanceKm: km, helpers: 0 }) : null
+
+  const ready = haveTrip && goodsText && declared && (when === 'now' || date) && km != null
+
+  const submit = () => {
+    if (!ready) return
+    onSend({
+      id: `bk${Date.now()}`,
+      status: 'pending',
+      // The customer states the trip; the driver names the price.
+      price: 0,
+      driverConfirmed: false,
+      customerConfirmed: false,
+      date: when === 'now' ? new Date().toISOString().slice(0, 10) : date,
+      time: when === 'now' ? 'As soon as possible' : time,
+      asap: when === 'now',
+      pickup: fullAddress(trip.pickup),
+      dropoff: fullAddress(trip.dropoff),
+      goods: goodsText,
+      accompany,
+      liftBack,
+      distanceKm: billedKm,
+      estimate: est?.total ?? 0,
+      driverName: listing.ownerName,
+      driverPhone: listing.ownerPhone,
+      vehicleReg: listing.registration ?? '',
+      vehicleName: listing.title,
+      customerName,
+    })
+  }
+
+  if (!haveTrip) {
+    return (
+      <div className="chat-intro">
+        <p>
+          Set your pick-up and drop-off on the Explore tab first, then come back - {firstName}{' '}
+          needs to know where the job is before they can price it.
+        </p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="triprequest">
+      <h2>Tell {firstName} about the trip</h2>
+      <p className="blockhint">
+        This goes across as your first message. {firstName} needs the when, the what and the
+        where before they can say yes or quote you.
+      </p>
+
+      <div className="triprequest-route">
+        <Icon name="pin" size={16} className="dim" />
+        <span>
+          <strong>
+            {fullAddress(trip.pickup)} &rarr; {fullAddress(trip.dropoff)}
+          </strong>
+          <em>{km == null ? 'Measuring the route...' : `${km} km`}</em>
+        </span>
+      </div>
+
+      <div className="tripfield">
+        <span className="tripfield-label">What are you moving?</span>
+        <div className="goodsrow">
+          {GOODS.map((g) => (
+            <button key={g} className={goods === g ? 'chip on' : 'chip'} onClick={() => setGoods(g)}>
+              {g}
+            </button>
+          ))}
+        </div>
+        {goods === 'Something else' && (
+          <input
+            className="tripinput"
+            value={goodsOther}
+            onChange={(e) => setGoodsOther(e.target.value)}
+            placeholder="e.g. a piano, garden refuse, a motorbike"
+          />
+        )}
+      </div>
+
+      <div className="tripfield">
+        <span className="tripfield-label">When?</span>
+        <div className="goodsrow">
+          <button className={when === 'now' ? 'chip on' : 'chip'} onClick={() => setWhen('now')}>
+            As soon as possible
+          </button>
+          <button className={when === 'later' ? 'chip on' : 'chip'} onClick={() => setWhen('later')}>
+            Pick a date
+          </button>
+        </div>
+        {when === 'later' && (
+          <div className="farecalc-fields">
+            <label className="field">
+              <span>Date</span>
+              <input
+                type="date"
+                value={date}
+                min={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setDate(e.target.value)}
+              />
+            </label>
+            <label className="field">
+              <span>Time</span>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+            </label>
+          </div>
+        )}
+      </div>
+
+      <label className="tripcheck">
+        <input
+          type="checkbox"
+          checked={accompany}
+          onChange={(e) => {
+            setAccompany(e.target.checked)
+            if (!e.target.checked) setLiftBack(false)
+          }}
+        />
+        <span>I want to travel with the goods</span>
+      </label>
+
+      {accompany && (
+        <>
+          <label className="tripcheck indent">
+            <input
+              type="checkbox"
+              checked={liftBack}
+              onChange={(e) => setLiftBack(e.target.checked)}
+            />
+            <span>I&rsquo;ll need a lift back</span>
+          </label>
+          {liftBack && (
+            <p className="tripwarn indent">
+              A lift back is the same journey again, so it costs roughly double
+              {oneWayEst && est ? ` - about ${rand(est.total)} instead of ${rand(oneWayEst.total)}` : ''}.
+              Only worth it if you are bringing a load back too; otherwise a taxi home is
+              usually cheaper.
+            </p>
+          )}
+        </>
+      )}
+
+      <label className="tripcheck">
+        <input type="checkbox" checked={declared} onChange={(e) => setDeclared(e.target.checked)} />
+        <span>
+          What I&rsquo;ve described is accurate. {firstName} has the right to know what
+          they&rsquo;re carrying before accepting.
+        </span>
+      </label>
+
+      {est && (
+        <div className="triprequest-est">
+          <em>Rough guide off {firstName}&rsquo;s rate</em>
+          <strong>{rand(est.total)}</strong>
+          <span>{firstName} sets the final price</span>
+        </div>
+      )}
+
+      <button className="btn primary full" disabled={!ready} onClick={submit}>
+        <Icon name="send" size={17} />
+        Send trip to {firstName}
+      </button>
+
+      {!ready && (
+        <p className="blockhint">
+          {!goodsText
+            ? 'Say what you are moving.'
+            : when === 'later' && !date
+              ? 'Pick a date.'
+              : km == null
+                ? 'Working out the distance...'
+                : 'Tick the box to confirm what you are moving.'}
+        </p>
+      )}
+    </div>
+  )
+}
+
+// A driver asking for a different time. Deliberately a message rather than an
+// edit: the trip is the customer's, so a clash is a request, not a change.
+function RescheduleRequest({ firstName, onClose, onAsk }) {
+  const [date, setDate] = useState('')
+  const [time, setTime] = useState('')
+  const [why, setWhy] = useState('')
+
+  const ready = date && time
+
+  const send = () => {
+    if (!ready) return
+    const when = `${bookingDateLabel(date)} at ${time}`
+    onAsk(
+      `I can't make the time you asked for${why.trim() ? ` - ${why.trim()}` : ''}. ` +
+        `Could we do ${when} instead? Let me know and I'll confirm.`,
+    )
+  }
+
+  return (
+    <div className="farecalc">
+      <div className="farecalc-head">
+        <strong>Ask {firstName} for a different time</strong>
+        <button onClick={onClose} aria-label="Close">
+          <Icon name="close" size={17} />
+        </button>
+      </div>
+
+      <p className="blockhint">
+        This goes across as a message. {firstName} decides - their pickup stays as it is
+        until they agree.
+      </p>
+
+      <div className="farecalc-fields">
+        <label className="field">
+          <span>Date</span>
+          <input
+            type="date"
+            value={date}
+            min={new Date().toISOString().slice(0, 10)}
+            onChange={(e) => setDate(e.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span>Time</span>
+          <input type="time" value={time} onChange={(e) => setTime(e.target.value)} />
+        </label>
+      </div>
+
+      <input
+        className="tripinput"
+        value={why}
+        onChange={(e) => setWhy(e.target.value)}
+        placeholder="Reason, optional - e.g. already booked that morning"
+      />
+
+      <button className="btn primary full" disabled={!ready} onClick={send}>
+        <Icon name="send" size={17} />
+        Send request
+      </button>
     </div>
   )
 }
