@@ -434,7 +434,10 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
       {result && (
         <>
           <div className="farecalc-result">
-            <span className="farecalc-total">≈ {rand(result.q.total)}</span>
+            <span className="farecalc-total">
+              ≈ {rand(result.q.total)}
+              <em className="estnote">Estimated price only</em>
+            </span>
             <span className="farecalc-basis">
               {result.distanceKm} km · {rateLabel(listing)}
               {listing.rateUnit === 'hour' && ` · ~${result.q.hours} hr`}
@@ -1188,6 +1191,7 @@ function TripRequest({ listing, firstName, customerName, onSend }) {
         <div className="triprequest-est">
           <em>Rough guide off {firstName}&rsquo;s rate</em>
           <strong>{rand(est.total)}</strong>
+          <em className="estnote">Estimated price only</em>
           <span>{firstName} sets the final price</span>
         </div>
       )}

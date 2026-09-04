@@ -6,7 +6,7 @@ import { roadKm } from '../lib/geo.js'
 import Icon, { StarIcon } from '../components/Icon.jsx'
 import AddressField from '../components/AddressField.jsx'
 import TripMap from '../components/TripMap.jsx'
-import { roadDistanceBetween, isLocatable } from '../lib/geocode.js'
+import { roadDistanceBetween, isLocatable, fullAddress } from '../lib/geocode.js'
 import { loadTrip, saveTrip, isTripSet } from '../lib/trip.js'
 
 // Everything within reach, sorted however the customer wants to look at it.
@@ -89,6 +89,23 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     setTrip(next)
     saveTrip(next)
   }
+
+  // Open when there is nothing to show yet, closed once a trip exists - coming
+  // back to browse should not mean scrolling past your own address again.
+  const [tripOpen, setTripOpen] = useState(() => !isTripSet(loadTrip()))
+
+  // Scrolling means you have moved on to looking at drivers, so the trip folds
+  // itself away. Only once it is actually set: collapsing a half-filled form
+  // under someone would lose what they were typing.
+  useEffect(() => {
+    if (!tripOpen || !tripSet) return
+
+    const onScroll = () => {
+      if (window.scrollY > 40) setTripOpen(false)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [tripOpen, tripSet])
 
   const rows = useMemo(() => {
     if (!coords) return []
@@ -188,6 +205,85 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         </button>
       </header>
 
+      {/* The trip folds away once it is set. It matters while you are entering
+          it and stops mattering the moment you start looking at drivers, so it
+          collapses to one line rather than pushing the list off the screen. */}
+      <div className={tripOpen ? 'trippanel open' : 'trippanel'}>
+        <button
+          className="trippanel-head"
+          onClick={() => setTripOpen((v) => !v)}
+          aria-expanded={tripOpen}
+        >
+          <Icon name="pin" size={17} />
+          <span className="trippanel-summary">
+            {tripSet ? (
+              <>
+                <strong>
+                  {fullAddress(trip.pickup)} &rarr; {fullAddress(trip.dropoff)}
+                </strong>
+                <em>
+                  {unlocatable
+                    ? 'Not found on the map - no estimate'
+                    : tripKm == null
+                      ? 'Measuring the route…'
+                      : `${tripKm} km · prices below are for this trip`}
+                </em>
+              </>
+            ) : (
+              <>
+                <strong>Where are you moving to?</strong>
+                <em>Add a pick-up and drop-off to price every driver for your trip</em>
+              </>
+            )}
+          </span>
+          <Icon name="chevron" size={16} className="dim" />
+        </button>
+
+        {tripOpen && (
+          <div className="trippanel-body">
+            <div className="trippicker">
+              <AddressField
+                label="Pick-up"
+                allowCurrent
+                value={trip.pickup}
+                onChange={(p) => setLeg({ pickup: p })}
+                placeholder="Street, place or suburb"
+              />
+              <AddressField
+                label="Drop-off"
+                value={trip.dropoff}
+                onChange={(p) => setLeg({ dropoff: p })}
+                placeholder="Street, place or suburb"
+              />
+            </div>
+
+            {trip.pickup && trip.dropoff && trip.pickup.label === trip.dropoff.label && (
+              <p className="blockhint error">Pick two different places.</p>
+            )}
+
+            {unlocatable && (
+              <p className="tripstatus warn">
+                We couldn&rsquo;t find that address on the map, so there&rsquo;s no estimate
+                for this trip &mdash; check it reads correctly and your driver will quote you.
+              </p>
+            )}
+
+            {tripSet && (
+              <TripMap
+                pickup={trip.pickup}
+                dropoff={trip.dropoff}
+                height={180}
+                onMove={(leg, coords) => {
+                  const current = trip[leg]
+                  if (!current) return
+                  setLeg({ [leg]: { ...current, ...coords, kind: 'pinned' } })
+                }}
+              />
+            )}
+          </div>
+        )}
+      </div>
+
       <div className="searchbar">
         <Icon name="search" size={18} className="dim" />
         <input
@@ -203,59 +299,6 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
           </button>
         )}
       </div>
-
-      {/* The trip sits above the drivers rather than gating them: browse
-          without one and you get each driver's rate, fill both ends in and the
-          same list shows what each would charge for that actual job. */}
-      <div className="trippicker">
-        <AddressField
-          label="Pick-up"
-          allowCurrent
-          value={trip.pickup}
-          onChange={(p) => setLeg({ pickup: p })}
-          placeholder="Street, place or suburb"
-        />
-        <AddressField
-          label="Drop-off"
-          value={trip.dropoff}
-          onChange={(p) => setLeg({ dropoff: p })}
-          placeholder="Street, place or suburb"
-        />
-      </div>
-
-      {trip.pickup && trip.dropoff && trip.pickup.label === trip.dropoff.label && (
-        <p className="blockhint error">Pick two different places.</p>
-      )}
-
-      {tripSet && (
-        <p className={unlocatable ? 'tripstatus warn' : 'tripstatus'}>
-          {unlocatable ? (
-            <>
-              We couldn&rsquo;t find that address on the map, so there&rsquo;s no estimate
-              for this trip &mdash; check it reads correctly and your driver will quote you.
-            </>
-          ) : tripKm == null ? (
-            'Measuring the route…'
-          ) : (
-            <>
-              <strong>{tripKm} km</strong> &middot; prices below are for this trip
-            </>
-          )}
-        </p>
-      )}
-
-      {tripSet && (
-        <TripMap
-          pickup={trip.pickup}
-          dropoff={trip.dropoff}
-          height={180}
-          onMove={(leg, coords) => {
-            const current = trip[leg]
-            if (!current) return
-            setLeg({ [leg]: { ...current, ...coords, kind: 'pinned' } })
-          }}
-        />
-      )}
 
       {/* One button holds every filter, so the vehicle list is the first thing
           you see rather than four rows of chips. */}
@@ -500,6 +543,7 @@ function VehicleCard({ listing, km, onOpen, rated, tripTotal = null }) {
           {tripTotal != null ? (
             <span className="card-rate">
               <strong>&asymp; {rand(tripTotal)}</strong>
+              <em className="estnote">Estimated price only</em>
               <em>{rateLabel(listing)}</em>
             </span>
           ) : (

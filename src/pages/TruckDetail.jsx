@@ -103,7 +103,12 @@ export default function TruckDetail({
         <div className="pricecard">
           <span>
             <strong>{rateLabel(listing)}</strong>
-            {guide && <em>about {rand(guide.total)} for a short 10 km move</em>}
+            {guide && (
+              <em>
+                about {rand(guide.total)} for a short 10 km move
+                <span className="estnote"> — estimated price only</span>
+              </em>
+            )}
           </span>
         </div>
         <p className="est-note">
