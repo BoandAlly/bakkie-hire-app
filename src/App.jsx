@@ -13,7 +13,12 @@ import {
   ratingsByListing,
   clashingTrip,
 } from './lib/threads.js'
-import { scheduleBookingReminders, cancelBookingReminders, notifyNow } from './lib/notify.js'
+import {
+  scheduleBookingReminders,
+  cancelBookingReminders,
+  notifyNow,
+  askForNotificationsOnce,
+} from './lib/notify.js'
 import { newAlerts } from './lib/alerts.js'
 import {
   loadSession,
@@ -171,6 +176,15 @@ export default function App() {
   // Deliberately NOT synced: who is signed in is per-device. You on one phone
   // and your friend on the other must stay two different people.
   useEffect(() => saveSession(session), [session])
+
+  // A driver signing in is the right moment to ask about notifications: work
+  // arrives whether the app is open or not, and a missed trip is money. Waiting
+  // for the first notification would mean the permission prompt swallows the
+  // very trip request it was meant to announce. Customers are asked later, when
+  // they send their first message — see sendMessage.
+  useEffect(() => {
+    if (session.role === 'driver' && driver) askForNotificationsOnce('driver')
+  }, [session.role, driver])
 
   // Notifications for anything the other person just did. Driven off the
   // threads, so it works the same whether the change came from this phone or
@@ -454,6 +468,11 @@ export default function App() {
   /* ---------- messaging ---------- */
 
   const sendMessage = (listingId, from, text, extra) => {
+    // A customer's first message is the moment a reply becomes possible, so it
+    // is the moment to ask about notifications - not on first launch, before
+    // the app has done anything for them.
+    if (from === 'customer') askForNotificationsOnce('customer')
+
     setThreads((prev) => {
       // Owner replies (customer null) match the listing's thread; a customer
       // matches their own. A thread is only ever created by a customer's first

@@ -148,3 +148,32 @@ export async function notifyNow(key, title, body) {
     /* no notifications on this device - the app carries on regardless */
   }
 }
+
+// ---------------------------------------------------------------------------
+// Asking for permission, at a moment that makes sense
+// ---------------------------------------------------------------------------
+//
+// Android 13 and up needs explicit permission before anything can be shown, and
+// asking on first launch - before the app has done anything for you - is how
+// people learn to tap "deny" on reflex.
+//
+// So it is asked at the point the answer obviously matters:
+//   drivers  when they sign in, because work arrives whether the app is open
+//            or not and a missed trip is money
+//   customers when they send their first trip, because that is when a reply is
+//            coming back
+//
+// Asked once. A refusal is respected rather than re-prompted every session:
+// everything else degrades quietly without notifications.
+
+const ASKED_KEY = 'bakkie.notifyAsked.v1'
+
+export async function askForNotificationsOnce(who) {
+  try {
+    if (localStorage.getItem(ASKED_KEY)) return
+    localStorage.setItem(ASKED_KEY, who)
+  } catch {
+    // Private window - it will ask again next time, which is harmless.
+  }
+  await ensurePermission()
+}
