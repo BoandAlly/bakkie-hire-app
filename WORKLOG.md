@@ -7,6 +7,40 @@ When you (or Claude) make a meaningful change, add a short entry here before pus
 
 ---
 
+## 2026-09-04 — Megan — real house-number addresses, via TomTom (optional key)
+
+**Why:** the free map (OpenStreetMap/Photon) has no South African house numbers,
+so the address search could only ever find the *road*, not the actual house.
+That's a problem for a delivery app. TomTom's map data does have house numbers,
+and its free tier needs **no credit card** (~2,500 searches/day), so we wired it
+in as an optional upgrade.
+
+**How it works — same optional pattern as the Supabase backend:**
+- With a `VITE_TOMTOM_API_KEY` set, the address search (`src/lib/geocode.js`,
+  `searchPlaces`) uses TomTom: typing "90 Round the Green" finds the real
+  address and the pin is the actual house.
+- With **no** key, it falls back to OpenStreetMap exactly as before — so a
+  checkout with no `.env` still runs. If a TomTom request errors, it also falls
+  back to OSM, so search never just dies.
+- Nothing else changed: routing/distance is still OSRM, `currentLocation` is
+  still Photon reverse-geocode. Only the *search suggestions* got the upgrade.
+
+**Setup — DONE and live:**
+- `.env.example` has the new optional `VITE_TOMTOM_API_KEY` with instructions.
+- The APK build (`.github/workflows/build-apk.yml`) passes the key through if
+  the `VITE_TOMTOM_API_KEY` repo secret is set. It's **optional** — the build
+  does NOT fail without it (unlike the Supabase keys).
+- The key is set: Daniel made a free TomTom account (no card, ~2,500
+  searches/day) and the key is now a GitHub repo secret. Tested live — searching
+  "90 round the green" returns "90 Round the Green, Sunningdale, Umhlanga, 4051"
+  pinned to the exact house, instead of just the road. Daniel: to run it on your
+  laptop, put the same key in your own `.env` (ask Megan for it — it's not in the
+  repo). Without it you get the free map, same as before.
+- **Later:** the key currently has no domain restriction. No bill risk (no card
+  on the account), but worth locking it to the app so nobody else uses the quota.
+
+---
+
 ## 2026-09-04 — Megan — three chat tweaks: plain chat by default, real addresses in the fare estimator, and a required marker
 
 Three small changes to the customer side of the chat (`src/pages/Chat.jsx`,

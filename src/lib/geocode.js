@@ -24,6 +24,23 @@ import { haversineKm } from './geo.js'
 const PHOTON = 'https://photon.komoot.io/api/'
 const OSRM = 'https://router.project-osrm.org/route/v1/driving'
 
+// TomTom Search — OPTIONAL, and the reason real street addresses work.
+//
+// OpenStreetMap (Photon, below) has no South African house numbers, so it can
+// only ever offer the road. TomTom's own map data does have them, down to the
+// exact house, so with a key here "90 Round the Green" finds the actual address
+// and pins the door. Its free tier needs no card (~2,500 searches/day), so
+// there is no bill to run up.
+//
+// With NO key every search falls straight back to Photon and the app runs
+// exactly as before — same optional-by-design idea as the Supabase backend, so
+// a checkout with no `.env` still works.
+const TOMTOM_KEY = import.meta.env.VITE_TOMTOM_API_KEY
+const TOMTOM = 'https://api.tomtom.com/search/2/search'
+
+/** Which address search is live — 'tomtom' when a key is set, else 'osm'. */
+export const addressProvider = TOMTOM_KEY ? 'tomtom' : 'osm'
+
 // Roughly South Africa, so a search for "Springfield" doesn't offer Missouri.
 const SA_BBOX = '16.45,-34.83,32.89,-22.13'
 // Bias toward Durban — where the drivers are — so nearby matches rank first.
@@ -74,9 +91,64 @@ function suburbMatches(query) {
 }
 
 /**
+ * One TomTom result in our place shape. A "Point Address" already carries the
+ * house number in its freeform address, so nothing needs prepending — the label
+ * reads "90 Round The Green Street, ..." and the coordinates are the house
+ * itself. A "Geography" is a suburb/area, so it gets the suburb tag and icon.
+ */
+function tomtomPlace(r) {
+  const kind = r.type === 'Geography' ? 'suburb' : 'address'
+  const label = r.address?.freeformAddress || r.poi?.name || ''
+  return place(label, r.position.lat, r.position.lon, kind)
+}
+
+/** Real addresses from TomTom, biased toward Durban, limited to South Africa. */
+async function tomtomSearch(query, { signal } = {}) {
+  const url =
+    `${TOMTOM}/${encodeURIComponent(query)}.json?key=${TOMTOM_KEY}` +
+    `&typeahead=true&limit=8&countrySet=ZA&language=en-GB` +
+    `&lat=${BIAS.lat}&lon=${BIAS.lon}`
+  const res = await fetch(url, { signal })
+  if (!res.ok) throw new Error(`TomTom ${res.status}`)
+  const body = await res.json()
+  return (body.results ?? [])
+    .filter((r) => r.position)
+    .map(tomtomPlace)
+    .filter((p) => p.label)
+}
+
+/**
+ * The free OpenStreetMap fallback (Photon). Streets, malls and landmarks, but
+ * no South African house numbers — see the note at the top of the file. Used
+ * when there is no TomTom key, or if a TomTom request fails.
+ */
+async function photonSearch(query, { signal } = {}) {
+  const url =
+    `${PHOTON}?q=${encodeURIComponent(query)}&limit=8&lang=en` +
+    `&lat=${BIAS.lat}&lon=${BIAS.lon}&bbox=${SA_BBOX}`
+  const res = await fetch(url, { signal })
+  if (!res.ok) return []
+  const body = await res.json()
+  return (body.features ?? [])
+    .filter((f) => !JUNK.has(f.properties?.osm_value))
+    .map((f) =>
+      place(
+        labelFor(f.properties),
+        f.geometry.coordinates[1],
+        f.geometry.coordinates[0],
+        'address',
+      ),
+    )
+    .filter((p) => p.label)
+}
+
+/**
  * Places matching `query`, suburbs first. Never rejects: if the geocoder is
  * unreachable the suburb matches still come back, so the address box degrades
  * to the old picker rather than breaking.
+ *
+ * TomTom when a key is set (real house numbers), OpenStreetMap otherwise — and
+ * OpenStreetMap again if TomTom errors, so search always answers with something.
  */
 export async function searchPlaces(query, { signal } = {}) {
   const suburbs = suburbMatches(query)
@@ -84,26 +156,20 @@ export async function searchPlaces(query, { signal } = {}) {
 
   let found = []
   try {
-    const url =
-      `${PHOTON}?q=${encodeURIComponent(query)}&limit=8&lang=en` +
-      `&lat=${BIAS.lat}&lon=${BIAS.lon}&bbox=${SA_BBOX}`
-    const res = await fetch(url, { signal })
-    if (res.ok) {
-      const body = await res.json()
-      found = (body.features ?? [])
-        .filter((f) => !JUNK.has(f.properties?.osm_value))
-        .map((f) =>
-          place(
-            labelFor(f.properties),
-            f.geometry.coordinates[1],
-            f.geometry.coordinates[0],
-            'address',
-          ),
-        )
-        .filter((p) => p.label)
-    }
+    found = TOMTOM_KEY
+      ? await tomtomSearch(query, { signal })
+      : await photonSearch(query, { signal })
   } catch {
-    // Offline, blocked, or aborted — suburbs alone are still a usable answer.
+    // A TomTom hiccup must not kill search: fall to the free map, then to the
+    // suburb list alone. An aborted request (the next keystroke) just returns
+    // nothing, and the caller ignores it.
+    if (TOMTOM_KEY) {
+      try {
+        found = await photonSearch(query, { signal })
+      } catch {
+        /* suburbs alone are still a usable answer */
+      }
+    }
   }
 
   // OSM splits a road into many ways, so one street comes back several times

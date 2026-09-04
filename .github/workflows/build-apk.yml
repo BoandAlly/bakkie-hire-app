@@ -63,13 +63,20 @@ jobs:
         env:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          # Optional — real house-number addresses via TomTom. If the secret is
+          # unset it's empty and the app falls back to the free map; the build
+          # does NOT fail without it (unlike the Supabase keys above).
+          VITE_TOMTOM_API_KEY: ${{ secrets.VITE_TOMTOM_API_KEY }}
         run: npm run build
 
-      # Deliberately no env: Vite folds the config check to false and compiles
-      # Supabase out entirely, so this APK cannot reach the shared data even by
-      # accident.
+      # Deliberately no Supabase env: Vite folds the config check to false and
+      # compiles Supabase out entirely, so this APK cannot reach the shared data
+      # even by accident. The TomTom key is separate from the shared backend
+      # (it's just address search), so it still rides along if present.
       - name: Build web assets (no backend)
         if: env.WITH_BACKEND != 'true'
+        env:
+          VITE_TOMTOM_API_KEY: ${{ secrets.VITE_TOMTOM_API_KEY }}
         run: |
           echo "Building WITHOUT the backend — this APK saves only to the phone it is on."
           npm run build
