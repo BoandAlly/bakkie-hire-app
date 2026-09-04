@@ -2,7 +2,13 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { classById, VehicleSilhouette } from '../data/vehicleClasses.jsx'
 import { PLACES, routeDistanceKm } from '../data/places.js'
 import { quote, rateLabel, rand } from '../lib/pricing.js'
-import { timeLabel, bookingSummary, bookingDateLabel, isUpcoming } from '../lib/threads.js'
+import {
+  timeLabel,
+  bookingSummary,
+  bookingDateLabel,
+  isUpcoming,
+  liveBooking,
+} from '../lib/threads.js'
 import { nearestPlace } from '../lib/geo.js'
 import { shrinkImage } from '../lib/photos.js'
 import { loadTrip, isTripSet } from '../lib/trip.js'
@@ -206,6 +212,20 @@ export default function Chat({
           firstName={thread?.customerName?.split(' ')[0] ?? 'the customer'}
           onClose={() => setBookOpen(false)}
           onAsk={(text) => {
+            // Asking for a different time un-agrees the booking. A confirmation
+            // is a confirmation of a specific time, so once that time is in
+            // question nobody is confirmed any more and the customer has to
+            // agree again - otherwise a trip stays marked confirmed while both
+            // people think it might be moving.
+            const live = liveBooking(thread)
+            if (live) {
+              onPatchBooking(live.id, {
+                status: 'pending',
+                driverConfirmed: false,
+                customerConfirmed: false,
+                rescheduleAsked: true,
+              })
+            }
             send(text)
             setBookOpen(false)
           }}

@@ -46,6 +46,7 @@ export default [
       // rather than correctness. Worth seeing, but as warnings - fifteen of
       // them as errors is how a real one gets scrolled past.
       'react-hooks/set-state-in-effect': 'warn',
+      'react-hooks/preserve-manual-memoization': 'warn',
       'react-hooks/refs': 'warn',
       'react-hooks/purity': 'warn',
       'react-hooks/immutability': 'warn',

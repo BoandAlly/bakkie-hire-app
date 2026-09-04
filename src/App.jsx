@@ -13,7 +13,8 @@ import {
   ratingsByListing,
   clashingTrip,
 } from './lib/threads.js'
-import { scheduleBookingReminders, cancelBookingReminders } from './lib/notify.js'
+import { scheduleBookingReminders, cancelBookingReminders, notifyNow } from './lib/notify.js'
+import { newAlerts } from './lib/alerts.js'
 import {
   loadSession,
   saveSession,
@@ -170,6 +171,35 @@ export default function App() {
   // Deliberately NOT synced: who is signed in is per-device. You on one phone
   // and your friend on the other must stay two different people.
   useEffect(() => saveSession(session), [session])
+
+  // Notifications for anything the other person just did. Driven off the
+  // threads, so it works the same whether the change came from this phone or
+  // arrived from the other one through sync.
+  //
+  // The ref starts null and is filled on the first pass without notifying:
+  // otherwise opening the app would fire one notification per message ever
+  // received.
+  const seenAlerts = useRef(null)
+
+  useEffect(() => {
+    if (!session.role) return
+
+    const listingIds = session.role === 'driver' ? new Set(myListings.map((l) => l.id)) : null
+    const mineOnly =
+      session.role === 'driver'
+        ? threads
+        : threads.filter((t) => t.customerEmail === session.customerEmail)
+
+    const { alerts, keys } = newAlerts({
+      threads: mineOnly,
+      listingIds,
+      role: session.role,
+      seen: seenAlerts.current,
+    })
+
+    seenAlerts.current = keys
+    for (const a of alerts) notifyNow(a.key, a.title, a.body)
+  }, [threads, session.role, session.customerEmail, myListings])
 
   // Android's back button. Capacitor closes the app on back by default, so a
   // driver halfway through a listing taps back out of habit and loses it. This

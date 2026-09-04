@@ -103,3 +103,48 @@ export async function cancelBookingReminders(bookingId) {
     /* nothing scheduled, or plugin unavailable */
   }
 }
+
+// ---------------------------------------------------------------------------
+// Things that just happened
+// ---------------------------------------------------------------------------
+//
+// The reminders above are scheduled for a time in the future. These fire now,
+// when the other person does something you would want to know about while the
+// app is in your pocket: a trip comes in, a price is agreed, a pickup is called
+// off, a message arrives.
+//
+// Ids are derived from what happened rather than counted up, so the same event
+// arriving twice - a sync pulling the same row again - replaces its own
+// notification instead of stacking a second one.
+
+/** A stable positive 31-bit id from any string. */
+function idFrom(key) {
+  let h = 0
+  for (let i = 0; i < key.length; i++) h = (Math.imul(31, h) + key.charCodeAt(i)) | 0
+  return (Math.abs(h) % 2147483000) + 1
+}
+
+/**
+ * Show a notification now. Silently does nothing when permission was refused
+ * or the plugin is unavailable - a missed notification must never break the
+ * thing that triggered it.
+ */
+export async function notifyNow(key, title, body) {
+  try {
+    if (!(await ensurePermission())) return
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: idFrom(key),
+          title,
+          body,
+          // A second or two out, because scheduling in the past is rejected by
+          // some Android versions.
+          schedule: { at: new Date(Date.now() + 1200) },
+        },
+      ],
+    })
+  } catch {
+    /* no notifications on this device - the app carries on regardless */
+  }
+}

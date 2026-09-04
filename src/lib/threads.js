@@ -129,6 +129,22 @@ export function timeLabel(iso) {
   }
 }
 
+/**
+ * The booking still in play in this thread — the one a reschedule or a
+ * cancellation would apply to. Newest first, ignoring anything already called
+ * off or finished.
+ */
+export function liveBooking(thread) {
+  const msgs = thread?.messages ?? []
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    const b = msgs[i].booking
+    if (msgs[i].kind !== 'booking' || !b) continue
+    if (b.status === 'cancelled' || b.status === 'done') continue
+    return b
+  }
+  return null
+}
+
 /** Threads where the owner spoke last — i.e. the customer has a reply waiting. */
 export const repliesWaiting = (threads) =>
   threads.filter((t) => lastMessage(t)?.from === 'owner').length
