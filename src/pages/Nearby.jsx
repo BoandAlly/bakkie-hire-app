@@ -15,6 +15,9 @@ import { loadTrip, saveTrip, isTripSet } from '../lib/trip.js'
 // prices a standard short move for every listing and compares the rand total.
 const REFERENCE_KM = 10
 
+// Nearest-first is the natural default when you're just browsing what's around.
+const DEFAULT_SORT = 'near'
+
 const SORTS = [
   { id: 'near', label: 'Nearest' },
   { id: 'price', label: 'Cheapest' },
@@ -31,9 +34,8 @@ const PAYLOADS = [
   { kg: 4000, label: '4 ton+' },
 ]
 
-// How far the customer is willing to look. The spec suggested a 10 km default,
-// but across greater Durban that hides most of the market and reads as an empty
-// app, so it opens unrestricted and narrows on request.
+// How far the customer is willing to look. Opens unrestricted and narrows on
+// request — a fixed default hides most of the market and reads as an empty app.
 const RADII = [
   { km: 0, label: 'Any distance' },
   { km: 5, label: 'Within 5 km' },
@@ -50,19 +52,17 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
   const [helpersOnly, setHelpersOnly] = useState(false)
   const [minPayload, setMinPayload] = useState(0)
   const [radiusKm, setRadiusKm] = useState(0)
+  const [sort, setSort] = useState(DEFAULT_SORT)
+  // All the filters live behind one button now, so the list is what you see first.
+  const [filtersOpen, setFiltersOpen] = useState(false)
+
+  // The trip lives here so every driver in the list can be priced for the
+  // actual job. Without one the list still shows, priced by rate alone.
   const [trip, setTrip] = useState(loadTrip)
-  const [editingTrip, setEditingTrip] = useState(false)
-  // Cheapest-first is the useful default once we know the actual job.
-  const [sort, setSort] = useState('price')
-
-  const tripSet = Boolean(
-    trip.pickup && trip.dropoff && trip.pickup.label !== trip.dropoff.label,
-  )
-
-  // Distance is a network call now that either end can be a street address, so
-  // it lands after render rather than during it. Null means "not known yet" —
-  // the screen says so instead of showing a wrong number.
   const [tripKm, setTripKm] = useState(null)
+
+  const tripSet = isTripSet(trip)
+  const unlocatable = tripSet && (!isLocatable(trip.pickup) || !isLocatable(trip.dropoff))
 
   useEffect(() => {
     if (!tripSet) {
@@ -78,11 +78,8 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
       alive = false
       ac.abort()
     }
-    // Coordinates, not object identity — a re-render must not re-fetch.
+    // Coordinates, not object identity - a re-render must not re-fetch.
   }, [tripSet, trip.pickup?.lat, trip.pickup?.lng, trip.dropoff?.lat, trip.dropoff?.lng])
-
-  // An address the map could not place: the trip is real, the estimate is not.
-  const unlocatable = tripSet && (!isLocatable(trip.pickup) || !isLocatable(trip.dropoff))
 
   const setLeg = (patch) => {
     const next = { ...trip, ...patch }
@@ -96,16 +93,21 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
 
     const scored = listings
       .map((l) => {
-        const base = placeByName(l.baseLocation)
-        // Priced for the real job once we know it. Without a trip there is
-        // nothing to price, so a fixed reference distance keeps "cheapest"
-        // meaningful across per-km and per-hour drivers.
-        const forJob = tripKm ? quote(l, { distanceKm: tripKm })?.total ?? null : null
+        // The driver's exact pin if they dropped one on the coverage map,
+        // otherwise the centroid of their suburb.
+        const base = l.baseCoords ?? placeByName(l.baseLocation)
         return {
           listing: l,
           km: base ? roadKm(coords, base) : null,
-          tripTotal: forJob,
-          refPrice: forJob ?? quote(l, { distanceKm: REFERENCE_KM })?.total ?? Infinity,
+          // "Cheapest" prices a standard short move so per-km and per-hour
+          // drivers can be compared on one rand total.
+          // Priced for the actual trip once we know it; a fixed reference
+          // distance otherwise, so "cheapest" still compares per-km against
+          // per-hour drivers.
+          tripTotal: tripKm ? quote(l, { distanceKm: tripKm })?.total ?? null : null,
+          refPrice: tripKm
+            ? quote(l, { distanceKm: tripKm })?.total ?? Infinity
+            : quote(l, { distanceKm: REFERENCE_KM })?.total ?? Infinity,
         }
       })
       // An operator who won't travel this far isn't available to this customer.
@@ -144,19 +146,22 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     minPayload,
     radiusKm,
     ratings,
+    // Without this the list keeps whatever prices it had before the route came
+    // back, so every card shows a rate and no total.
     tripKm,
     sort,
   ])
 
-  const filtersActive =
-    !!query ||
-    !!classFilter ||
-    roundTripOnly ||
-    insuredOnly ||
-    helpersOnly ||
-    minPayload > 0 ||
-    radiusKm > 0 ||
-    sort !== 'price'
+  // How many chip filters are on, shown as a badge on the Filters button.
+  const activeCount =
+    (classFilter ? 1 : 0) +
+    (roundTripOnly ? 1 : 0) +
+    (insuredOnly ? 1 : 0) +
+    (helpersOnly ? 1 : 0) +
+    (minPayload ? 1 : 0) +
+    (radiusKm ? 1 : 0)
+
+  const filtersActive = !!query || activeCount > 0 || sort !== DEFAULT_SORT
 
   const clearAll = () => {
     setQuery('')
@@ -166,26 +171,8 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     setHelpersOnly(false)
     setMinPayload(0)
     setRadiusKm(0)
-    setSort('price')
+    setSort(DEFAULT_SORT)
   }
-
-  const tripPicker = (
-    <div className="trippicker">
-      <AddressField
-        label="Pick-up"
-        allowCurrent
-        value={trip.pickup}
-        onChange={(p) => setLeg({ pickup: p })}
-        placeholder="Street, place or suburb"
-      />
-      <AddressField
-        label="Drop-off"
-        value={trip.dropoff}
-        onChange={(p) => setLeg({ dropoff: p })}
-        placeholder="Street, place or suburb"
-      />
-    </div>
-  )
 
   return (
     <div className="screen wide">
@@ -198,11 +185,40 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         </button>
       </header>
 
-      {/* The trip sits above the drivers rather than gating them. Someone who
-          just wants to see who is around and what they charge can do that; the
-          moment both ends are filled in, the same list starts showing what each
-          driver would charge for that actual job. */}
-      {tripPicker}
+      <div className="searchbar">
+        <Icon name="search" size={18} className="dim" />
+        <input
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          placeholder="Search vehicle, driver or type"
+          aria-label="Search listings"
+        />
+        {query && (
+          <button className="searchclear" onClick={() => setQuery('')} aria-label="Clear search">
+            <Icon name="close" size={16} />
+          </button>
+        )}
+      </div>
+
+      {/* The trip sits above the drivers rather than gating them: browse
+          without one and you get each driver's rate, fill both ends in and the
+          same list shows what each would charge for that actual job. */}
+      <div className="trippicker">
+        <AddressField
+          label="Pick-up"
+          allowCurrent
+          value={trip.pickup}
+          onChange={(p) => setLeg({ pickup: p })}
+          placeholder="Street, place or suburb"
+        />
+        <AddressField
+          label="Drop-off"
+          value={trip.dropoff}
+          onChange={(p) => setLeg({ dropoff: p })}
+          placeholder="Street, place or suburb"
+        />
+      </div>
 
       {trip.pickup && trip.dropoff && trip.pickup.label === trip.dropoff.label && (
         <p className="blockhint error">Pick two different places.</p>
@@ -225,113 +241,131 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         </p>
       )}
 
-      {/* The route, drawn. It answers "is that the way I'd actually go" in a
-          way a number of kilometres never does. */}
-      <TripMap
-        pickup={trip.pickup}
-        dropoff={trip.dropoff}
-        height={190}
-        onMove={(leg, coords) => {
-          // Keep the address text and any house number they typed; only the
-          // point moves. The label still reads sensibly, and the distance,
-          // price and route all follow the pin from here on.
-          const current = trip[leg]
-          if (!current) return
-          setLeg({ [leg]: { ...current, ...coords, kind: 'pinned' } })
-        }}
-      />
-
-      <div className="searchbar">
-        <Icon name="search" size={18} className="dim" />
-        <input
-          type="search"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search vehicle, driver or type"
-          aria-label="Search listings"
+      {tripSet && (
+        <TripMap
+          pickup={trip.pickup}
+          dropoff={trip.dropoff}
+          height={180}
+          onMove={(leg, coords) => {
+            const current = trip[leg]
+            if (!current) return
+            setLeg({ [leg]: { ...current, ...coords, kind: 'pinned' } })
+          }}
         />
-        {query && (
-          <button className="searchclear" onClick={() => setQuery('')} aria-label="Clear search">
-            <Icon name="close" size={16} />
-          </button>
-        )}
-      </div>
+      )}
 
-      <div className="chiprow" role="group" aria-label="Filter by vehicle type">
+      {/* One button holds every filter, so the vehicle list is the first thing
+          you see rather than four rows of chips. */}
+      <div className="filterbar">
         <button
-          className={classFilter === '' ? 'chip on' : 'chip'}
-          onClick={() => setClassFilter('')}
-          aria-pressed={classFilter === ''}
+          className={filtersOpen ? 'filterbtn on' : 'filterbtn'}
+          onClick={() => setFiltersOpen((v) => !v)}
+          aria-expanded={filtersOpen}
         >
-          All
-        </button>
-        {VEHICLE_CLASSES.map((c) => (
-          <button
-            key={c.id}
-            className={classFilter === c.id ? 'chip on' : 'chip'}
-            onClick={() => setClassFilter(c.id)}
-            aria-pressed={classFilter === c.id}
-          >
-            <VehicleSilhouette classId={c.id} />
-            {c.name}
-          </button>
-        ))}
-      </div>
-
-      <div className="chiprow" role="group" aria-label="More filters">
-        <button
-          className={roundTripOnly ? 'chip on' : 'chip'}
-          onClick={() => setRoundTripOnly((v) => !v)}
-          aria-pressed={roundTripOnly}
-        >
-          <Icon name="refresh" size={15} />
-          Round trip
-        </button>
-        <button
-          className={insuredOnly ? 'chip on' : 'chip'}
-          onClick={() => setInsuredOnly((v) => !v)}
-          aria-pressed={insuredOnly}
-        >
-          <Icon name="shield" size={15} />
-          Insured
-        </button>
-        <button
-          className={helpersOnly ? 'chip on' : 'chip'}
-          onClick={() => setHelpersOnly((v) => !v)}
-          aria-pressed={helpersOnly}
-        >
-          <Icon name="users" size={15} />
-          Has helpers
+          <Icon name="sort" size={17} />
+          <span>Filters</span>
+          {activeCount > 0 && <span className="count">{activeCount}</span>}
+          <Icon name="chevron" size={15} className="dim" />
         </button>
       </div>
 
-      <div className="chiprow" role="group" aria-label="Minimum load capacity">
-        {PAYLOADS.map((p) => (
-          <button
-            key={p.kg}
-            className={minPayload === p.kg ? 'chip on' : 'chip'}
-            onClick={() => setMinPayload(p.kg)}
-            aria-pressed={minPayload === p.kg}
-          >
-            {p.kg > 0 && <Icon name="box" size={15} />}
-            {p.label}
-          </button>
-        ))}
-      </div>
+      {filtersOpen && (
+        <div className="filterpanel">
+          <div className="filtergroup">
+            <span className="filterlabel">Vehicle type</span>
+            <div className="chiprow" role="group" aria-label="Filter by vehicle type">
+              <button
+                className={classFilter === '' ? 'chip on' : 'chip'}
+                onClick={() => setClassFilter('')}
+                aria-pressed={classFilter === ''}
+              >
+                All
+              </button>
+              {VEHICLE_CLASSES.map((c) => (
+                <button
+                  key={c.id}
+                  className={classFilter === c.id ? 'chip on' : 'chip'}
+                  onClick={() => setClassFilter(c.id)}
+                  aria-pressed={classFilter === c.id}
+                >
+                  <VehicleSilhouette classId={c.id} />
+                  {c.name}
+                </button>
+              ))}
+            </div>
+          </div>
 
-      <div className="chiprow">
-        {RADII.map((r) => (
-          <button
-            key={r.km}
-            className={radiusKm === r.km ? 'chip on' : 'chip'}
-            onClick={() => setRadiusKm(r.km)}
-            aria-pressed={radiusKm === r.km}
-          >
-            {r.km > 0 && <Icon name="pin" size={15} />}
-            {r.label}
-          </button>
-        ))}
-      </div>
+          <div className="filtergroup">
+            <span className="filterlabel">Features</span>
+            <div className="chiprow" role="group" aria-label="More filters">
+              <button
+                className={roundTripOnly ? 'chip on' : 'chip'}
+                onClick={() => setRoundTripOnly((v) => !v)}
+                aria-pressed={roundTripOnly}
+              >
+                <Icon name="refresh" size={15} />
+                Round trip
+              </button>
+              <button
+                className={insuredOnly ? 'chip on' : 'chip'}
+                onClick={() => setInsuredOnly((v) => !v)}
+                aria-pressed={insuredOnly}
+              >
+                <Icon name="shield" size={15} />
+                Insured
+              </button>
+              <button
+                className={helpersOnly ? 'chip on' : 'chip'}
+                onClick={() => setHelpersOnly((v) => !v)}
+                aria-pressed={helpersOnly}
+              >
+                <Icon name="users" size={15} />
+                Has helpers
+              </button>
+            </div>
+          </div>
+
+          <div className="filtergroup">
+            <span className="filterlabel">Load</span>
+            <div className="chiprow" role="group" aria-label="Minimum load capacity">
+              {PAYLOADS.map((p) => (
+                <button
+                  key={p.kg}
+                  className={minPayload === p.kg ? 'chip on' : 'chip'}
+                  onClick={() => setMinPayload(p.kg)}
+                  aria-pressed={minPayload === p.kg}
+                >
+                  {p.kg > 0 && <Icon name="box" size={15} />}
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="filtergroup">
+            <span className="filterlabel">Distance</span>
+            <div className="chiprow" role="group" aria-label="Distance">
+              {RADII.map((r) => (
+                <button
+                  key={r.km}
+                  className={radiusKm === r.km ? 'chip on' : 'chip'}
+                  onClick={() => setRadiusKm(r.km)}
+                  aria-pressed={radiusKm === r.km}
+                >
+                  {r.km > 0 && <Icon name="pin" size={15} />}
+                  {r.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {filtersActive && (
+            <button className="clearlink" onClick={clearAll}>
+              Clear all filters
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="resultbar">
         <p className="resultcount">
@@ -354,6 +388,11 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
           </select>
         </label>
       </div>
+
+      <p className="est-note">
+        <Icon name="wallet" size={14} />
+        Prices shown are estimates — a driver&rsquo;s actual price may be higher or lower.
+      </p>
 
       {rows.length === 0 ? (
         <div className="blank">
@@ -453,11 +492,11 @@ function VehicleCard({ listing, km, onOpen, rated, tripTotal = null }) {
         </span>
 
         <span className="card-bottom">
-          {/* The total for this job is what people actually compare. The rate
-              stays underneath so they can see how it was arrived at. */}
+          {/* The total for this job is what people compare; the rate stays
+              underneath so they can see how it was arrived at. */}
           {tripTotal != null ? (
             <span className="card-rate">
-              <strong>≈ {rand(tripTotal)}</strong>
+              <strong>&asymp; {rand(tripTotal)}</strong>
               <em>{rateLabel(listing)}</em>
             </span>
           ) : (

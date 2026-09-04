@@ -6,7 +6,7 @@ import { timeLabel, bookingSummary, bookingDateLabel, isUpcoming } from '../lib/
 import { nearestPlace } from '../lib/geo.js'
 import { shrinkImage } from '../lib/photos.js'
 import { loadTrip, isTripSet } from '../lib/trip.js'
-import { roadDistanceBetween, fullAddress } from '../lib/geocode.js'
+import { roadDistanceBetween, fullAddress, isLocatable } from '../lib/geocode.js'
 import { formatPhone } from '../lib/session.js'
 import Icon, { Stars } from '../components/Icon.jsx'
 import CopyLocation from '../components/CopyLocation.jsx'
@@ -253,26 +253,8 @@ const GOODS = [
 ]
 
 function FareCalculator({ listing, firstName, onClose, onAsk }) {
-  // The customer already told us the job on the browse screen. Asking again
-  // here would be the app forgetting. They can still change it — that reopens
-  // the trip screen, which is where the address search lives.
-  const savedTrip = loadTrip()
-  const haveSavedTrip = isTripSet(savedTrip)
-
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
-  const [tripKm, setTripKm] = useState(null)
-
-  useEffect(() => {
-    if (!haveSavedTrip) return
-    let alive = true
-    roadDistanceBetween(savedTrip.pickup, savedTrip.dropoff).then((km) => {
-      if (alive) setTripKm(km)
-    })
-    return () => {
-      alive = false
-    }
-  }, [haveSavedTrip, savedTrip.pickup?.lat, savedTrip.dropoff?.lat])
   const [goods, setGoods] = useState('')
   const [goodsOther, setGoodsOther] = useState('')
   const [when, setWhen] = useState('now')
@@ -282,16 +264,19 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
   const [liftBack, setLiftBack] = useState(false)
   const [declared, setDeclared] = useState(false)
 
-  // Where the job is, and how far — from the saved trip when there is one,
-  // otherwise from the two pickers below.
-  const fromLabel = haveSavedTrip ? fullAddress(savedTrip.pickup) : from
-  const toLabel = haveSavedTrip ? fullAddress(savedTrip.dropoff) : to
+  // Where the job is — from the two area pickers below. Distance comes from the
+  // built-in area table, so the estimate is instant and never waits on a network
+  // lookup (a stalled online route used to leave the Ask button dead).
+  const fromLabel = from
+  const toLabel = to
 
   const result = useMemo(() => {
-    const distanceKm = haveSavedTrip ? tripKm : from && to && from !== to ? routeDistanceKm(from, to) : null
+    const distanceKm = from && to && from !== to ? routeDistanceKm(from, to) : null
     if (distanceKm == null) return null
     return { distanceKm, q: quote(listing, { distanceKm, helpers: 0 }) }
-  }, [haveSavedTrip, tripKm, from, to, listing])
+  }, [from, to, listing])
+
+  const unlocatable = haveTrip && (!isLocatable(trip.pickup) || !isLocatable(trip.dropoff))
 
   const goodsText = goods === 'Something else' ? goodsOther.trim() : goods
   // The driver decides whether to take a job from what is being moved, so the
@@ -323,46 +308,29 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
         </button>
       </div>
 
-      {/* The trip the customer already set on the browse screen, including any
-          house number they gave. Only falls back to picking suburbs here if
-          they somehow reached a chat without setting one. */}
-      {haveSavedTrip ? (
-        <div className="farecalc-trip">
-          <Icon name="pin" size={16} className="dim" />
-          <span>
-            <strong>
-              {fromLabel} &rarr; {toLabel}
-            </strong>
-            <em>{tripKm == null ? 'Measuring the route…' : `${tripKm} km`}</em>
-          </span>
-        </div>
-      ) : (
-        <>
-          <div className="farecalc-fields">
-            <label className="field">
-              <span>Pick-up</span>
-              <select value={from} onChange={(e) => setFrom(e.target.value)}>
-                <option value="">Choose area</option>
-                {PLACES.map((p) => (
-                  <option key={p.name}>{p.name}</option>
-                ))}
-              </select>
-            </label>
-            <label className="field">
-              <span>Drop-off</span>
-              <select value={to} onChange={(e) => setTo(e.target.value)}>
-                <option value="">Choose area</option>
-                {PLACES.map((p) => (
-                  <option key={p.name}>{p.name}</option>
-                ))}
-              </select>
-            </label>
-          </div>
+      <div className="farecalc-fields">
+        <label className="field">
+          <span>Pick-up</span>
+          <select value={from} onChange={(e) => setFrom(e.target.value)}>
+            <option value="">Choose area</option>
+            {PLACES.map((p) => (
+              <option key={p.name}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+        <label className="field">
+          <span>Drop-off</span>
+          <select value={to} onChange={(e) => setTo(e.target.value)}>
+            <option value="">Choose area</option>
+            {PLACES.map((p) => (
+              <option key={p.name}>{p.name}</option>
+            ))}
+          </select>
+        </label>
+      </div>
 
-          {from && to && from === to && (
-            <p className="farecalc-hint">Pick two different areas to get an estimate.</p>
-          )}
-        </>
+      {from && to && from === to && (
+        <p className="farecalc-hint">Pick two different areas to get an estimate.</p>
       )}
 
       <div className="tripfield">
@@ -434,25 +402,34 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
 
       {/* Only meaningful if they're going along in the first place. */}
       {accompany && (
-        <label className="tripcheck indent">
-          <input
-            type="checkbox"
-            checked={liftBack}
-            onChange={(e) => setLiftBack(e.target.checked)}
-          />
-          <span>I’ll need a lift back</span>
-        </label>
+        <>
+          <label className="tripcheck indent">
+            <input
+              type="checkbox"
+              checked={liftBack}
+              onChange={(e) => setLiftBack(e.target.checked)}
+            />
+            <span>I’ll need a lift back</span>
+          </label>
+          {liftBack && (
+            <p className="tripnote indent">
+              <Icon name="wallet" size={14} />
+              {firstName} may charge extra for the trip back — sort it out together in the chat.
+            </p>
+          )}
+        </>
       )}
 
-      <label className="tripcheck">
+      <label className="tripcheck required">
         <input
           type="checkbox"
           checked={declared}
           onChange={(e) => setDeclared(e.target.checked)}
         />
         <span>
+          <span className="req" aria-hidden="true">*</span>
           What I’ve described is accurate. {firstName} has the right to know what they’re
-          carrying before accepting.
+          carrying before accepting. <em className="reqnote">(required)</em>
         </span>
       </label>
 
@@ -467,8 +444,9 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
             </span>
           </div>
           <p className="farecalc-note">
-            A guide off {firstName}'s rate — helpers and anything extra aren't included, and
-            the final price is whatever the two of you agree in the chat.
+            This is only an estimate off {firstName}'s rate — the actual price may be higher
+            or lower. Helpers and anything extra aren't included; you agree the final price in
+            the chat.
           </p>
           <button className="btn primary full" disabled={!ready} onClick={() => onAsk(askText)}>
             <Icon name="send" size={17} />
@@ -1005,6 +983,9 @@ function StarPicker({ value, onChange }) {
 // the customer, so they are the one who states it; a driver who cannot make it
 // asks to reschedule rather than editing someone else's plans.
 function TripRequest({ listing, firstName, customerName, onSend }) {
+  // The trip is set on Explore, where it prices the whole driver list. Read
+  // here, not edited: one place owns it, so the estimate a customer compared
+  // against is the same job they end up sending.
   const trip = loadTrip()
   const haveTrip = isTripSet(trip)
 
@@ -1074,8 +1055,8 @@ function TripRequest({ listing, firstName, customerName, onSend }) {
     return (
       <div className="chat-intro">
         <p>
-          Set your pick-up and drop-off on the Explore tab first, then come back - {firstName}{' '}
-          needs to know where the job is before they can price it.
+          Add your pick-up and drop-off on the Explore tab first &mdash; {firstName} needs
+          to know where the job is before they can price it.
         </p>
       </div>
     )
@@ -1089,13 +1070,21 @@ function TripRequest({ listing, firstName, customerName, onSend }) {
         where before they can say yes or quote you.
       </p>
 
+      {/* The trip is set on Explore, where it prices the whole driver list.
+          Here it is just shown back, so nobody retypes it per driver. */}
       <div className="triprequest-route">
         <Icon name="pin" size={16} className="dim" />
         <span>
           <strong>
             {fullAddress(trip.pickup)} &rarr; {fullAddress(trip.dropoff)}
           </strong>
-          <em>{km == null ? 'Measuring the route...' : `${km} km`}</em>
+          <em>
+            {unlocatable
+              ? 'Not found on the map - no estimate, your driver will quote'
+              : km == null
+                ? 'Measuring the route...'
+                : `${km} km`}
+          </em>
         </span>
       </div>
 

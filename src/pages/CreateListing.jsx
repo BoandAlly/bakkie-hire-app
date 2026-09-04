@@ -1,10 +1,11 @@
 import { useState } from 'react'
-import { PLACES } from '../data/places.js'
+import { PLACES, placeByName } from '../data/places.js'
 import { VEHICLE_CLASSES, classById, VehicleSilhouette } from '../data/vehicleClasses.jsx'
 import { RATE_UNITS, rand } from '../lib/pricing.js'
 import { formatPhone } from '../lib/session.js'
 import Icon from '../components/Icon.jsx'
 import { shrinkImage } from '../lib/photos.js'
+import RadiusMap from '../components/RadiusMap.jsx'
 
 const BLANK = {
   ownerName: '',
@@ -25,12 +26,22 @@ const BLANK = {
   helperRate: '',
   baseLocation: '',
   serviceRadiusKm: 50,
+  // Exact spot the driver drops their pin on the map; falls back to the suburb
+  // centroid when they haven't moved it.
+  baseCoords: null,
   roundTrip: false,
   gitInsured: false,
   gitCoverAmount: '',
 }
 
-export default function CreateListing({ onSave, onCancel, initial = null, owner = null }) {
+export default function CreateListing({
+  onSave,
+  onCancel,
+  initial = null,
+  owner = null,
+  ownerPhoto = '',
+  onSetPhoto,
+}) {
   const editing = Boolean(initial)
 
   // Name and number come off the signed-in profile, so a driver never retypes
@@ -90,11 +101,27 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
 
   const num = (v) => (v === '' || v == null ? 0 : Number(v))
 
+  // Where the coverage circle sits: the exact pin if they've dropped one,
+  // otherwise the centroid of the suburb they picked.
+  const basePlace = placeByName(form.baseLocation)
+  const baseCenter =
+    form.baseCoords ?? (basePlace ? { lat: basePlace.lat, lng: basePlace.lng } : null)
+
+  const useMyLocation = () => {
+    if (!('geolocation' in navigator)) return
+    navigator.geolocation.getCurrentPosition(
+      (pos) => set({ baseCoords: { lat: pos.coords.latitude, lng: pos.coords.longitude } }),
+      () => {},
+      { timeout: 8000 },
+    )
+  }
+
   // The one thing a driver kept hitting: a greyed-out button with no clue what
   // it was waiting on. So we spell out exactly what's still needed, each item
   // pointing back at the numbered section it lives in, and let the button be
   // pressed at any time — pressing it early just surfaces the checklist.
   const missing = [
+    !ownerPhoto && { section: 'photo', label: 'Add a profile photo of yourself' },
     !form.vehicleClass && { section: 1, label: 'Choose what you’re driving' },
     !form.title.trim() && { section: 3, label: 'Add a listing headline' },
     !form.baseLocation && { section: 3, label: 'Pick the area you’re based in' },
@@ -105,6 +132,22 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
   const [attempted, setAttempted] = useState(false)
   const [addingPhotos, setAddingPhotos] = useState(false)
   const [photoError, setPhotoError] = useState('')
+  const [profileBusy, setProfileBusy] = useState(false)
+  const [profileError, setProfileError] = useState('')
+
+  // A face for the driver, required before a listing can go live so a customer
+  // always knows who is turning up. Saved straight onto the account.
+  const setProfilePhoto = async (file) => {
+    if (!file) return
+    setProfileBusy(true)
+    try {
+      onSetPhoto?.(await shrinkImage(file, { maxPx: 320, quality: 0.8 }))
+      setProfileError('')
+    } catch {
+      setProfileError('That picture couldn’t be read. Try another one.')
+    }
+    setProfileBusy(false)
+  }
 
   const submit = () => {
     if (!ready) {
@@ -153,6 +196,47 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
           </p>
         )}
       </header>
+
+      <section className="block" id="create-section-photo">
+        <h2>
+          Your photo <span className="req" aria-hidden="true">*</span>
+        </h2>
+        <p className="blockhint">
+          A clear photo of your face is required. It&rsquo;s shown to customers so they know
+          who to expect before they book.
+        </p>
+        <div className="profilephoto-row">
+          <label className={profileBusy ? 'profile-avatar editable busy' : 'profile-avatar editable'}>
+            {ownerPhoto ? (
+              <img src={ownerPhoto} alt="" />
+            ) : (
+              <span>{initials(form.ownerName)}</span>
+            )}
+            <input
+              type="file"
+              accept="image/*"
+              onChange={(e) => {
+                const file = e.target.files?.[0]
+                e.target.value = ''
+                setProfilePhoto(file)
+              }}
+            />
+            <span className="profile-avatar-edit">
+              {profileBusy ? '…' : ownerPhoto ? 'Change' : 'Add'}
+            </span>
+          </label>
+          <span className="profilephoto-status">
+            {ownerPhoto ? (
+              <em className="ok">
+                <Icon name="check" size={15} /> Photo added
+              </em>
+            ) : (
+              <em className="bad">Tap the circle to add your photo — this is required.</em>
+            )}
+            {profileError && <em className="bad">{profileError}</em>}
+          </span>
+        </div>
+      </section>
 
       <section className="block" id="create-section-1">
         <h2>1. What are you driving?</h2>
@@ -271,7 +355,7 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
             <span>Based in</span>
             <select
               value={form.baseLocation}
-              onChange={(e) => set({ baseLocation: e.target.value })}
+              onChange={(e) => set({ baseLocation: e.target.value, baseCoords: null })}
             >
               <option value="">Choose area</option>
               {PLACES.map((p) => (
@@ -279,18 +363,48 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
               ))}
             </select>
           </label>
+        </div>
 
-          <label className="field">
-            <span>How far will you travel? ({form.serviceRadiusKm} km)</span>
-            <input
-              type="range"
-              min="10"
-              max="800"
-              step="10"
-              value={form.serviceRadiusKm}
-              onChange={(e) => set({ serviceRadiusKm: e.target.value })}
+        <div className="coverageblock">
+          <div className="coverage-head">
+            <span className="coverage-title">Your coverage radius</span>
+            <button type="button" className="coverage-loc" onClick={useMyLocation}>
+              <Icon name="pin" size={15} />
+              Use my location
+            </button>
+          </div>
+
+          {baseCenter ? (
+            <RadiusMap
+              center={baseCenter}
+              radiusKm={Number(form.serviceRadiusKm) || 10}
+              onMovePin={(c) => set({ baseCoords: c })}
             />
-          </label>
+          ) : (
+            <p className="blockhint">
+              Pick the area you&rsquo;re based in above, then set your radius here.
+            </p>
+          )}
+
+          <input
+            className="coverage-slider"
+            type="range"
+            min="10"
+            max="800"
+            step="10"
+            value={form.serviceRadiusKm}
+            onChange={(e) => set({ serviceRadiusKm: e.target.value })}
+            aria-label="Coverage radius in kilometres"
+          />
+          <p className="coverage-value">
+            <strong>{form.serviceRadiusKm} km</strong> around you
+          </p>
+
+          <p className="blockhint">
+            This circle is who can see you — people inside it can find your listing, people
+            outside can&rsquo;t. You can still deliver anywhere; the circle only controls who
+            sees you.
+          </p>
         </div>
 
         <div className="featurepick">
@@ -428,6 +542,7 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
                 ),
               )}
             </strong>
+            . Customers see this as an estimate — you set the final price on each job.
           </p>
         )}
       </section>
@@ -489,3 +604,11 @@ export default function CreateListing({ onSave, onCancel, initial = null, owner 
     </div>
   )
 }
+
+const initials = (name) =>
+  (name || '')
+    .split(' ')
+    .slice(0, 2)
+    .map((p) => p[0])
+    .join('')
+    .toUpperCase() || 'You'

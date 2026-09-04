@@ -1,126 +1,97 @@
 import { useEffect, useRef, useState } from 'react'
-// MapLibre 6 dropped its default export; these are the only three pieces used.
-import { Map as MapLibreMap, Marker, LngLatBounds } from 'maplibre-gl'
-import 'maplibre-gl/dist/maplibre-gl.css'
+import L from 'leaflet'
+import 'leaflet/dist/leaflet.css'
 import { routeShape, isLocatable } from '../lib/geocode.js'
 
 // The trip on a map: where it starts, where it ends, and the road between.
 //
-// Tiles come from OpenFreeMap - OpenStreetMap data, no API key, no request
-// limits, no billing. The style URL is the only thing to change if that ever
-// needs to become a self-hosted server.
+// Leaflet rather than MapLibre, on purpose. MapLibre needs WebGL and costs about
+// a megabyte; Leaflet draws plain images, weighs a seventh of that, and works on
+// cheap Android phones where WebGL is patchy. For a map you glance at to check
+// the route looks right, vector tiles are not worth the difference — and the
+// listing form already uses Leaflet, so this is one library instead of two.
 //
-// OpenStreetMap requires attribution wherever its data is shown. MapLibre puts
-// it in the corner by default and it must not be removed.
-const STYLE = 'https://tiles.openfreemap.org/styles/liberty'
+// Tiles come from Carto rather than tile.openstreetmap.org. OSM's tile policy
+// forbids "distributing an app that uses tiles from openstreetmap.org", and
+// access can be cut off without warning; Carto serves the same OpenStreetMap
+// data and permits this. Attribution is required either way and is shown below.
+const TILES = 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png'
+const ATTRIBUTION = '&copy; OpenStreetMap contributors &copy; CARTO'
 
-const pin = (color, label) => {
-  const el = document.createElement('div')
-  el.className = 'mappin'
-  el.style.background = color
-  el.textContent = label
-  return el
-}
+/** A round lettered pin, matching the ones in the rest of the app. */
+const pinIcon = (color, label) =>
+  L.divIcon({
+    className: '',
+    html: `<div class="mappin" style="background:${color}">${label}</div>`,
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+  })
 
 export default function TripMap({ pickup, dropoff, height = 200, onMove = null }) {
   const holder = useRef(null)
   const map = useRef(null)
-  const markers = useRef({ pickup: null, dropoff: null })
+  const layers = useRef({ pickup: null, dropoff: null, route: null })
   const [failed, setFailed] = useState(false)
-  const [ready, setReady] = useState(false)
 
-  // The map is built ONCE. Coordinates are handled by the effect below, moving
-  // the markers in place — rebuilding on every change would tear the map down
-  // mid-drag, flashing and throwing away whatever the person had panned to.
+  // Built once. Coordinates are handled by the effect below, moving the markers
+  // in place — rebuilding on every change would tear the map down mid-drag and
+  // throw away whatever the person had panned to.
   useEffect(() => {
     if (!holder.current || !isLocatable(pickup) || !isLocatable(dropoff)) return
 
-    let cancelled = false
-    const m = new MapLibreMap({
-      container: holder.current,
-      style: STYLE,
-      center: [(pickup.lng + dropoff.lng) / 2, (pickup.lat + dropoff.lat) / 2],
-      zoom: 10,
-      attributionControl: { compact: true },
-      // A map inside a scrolling page shouldn't eat the scroll; people can
-      // still pinch and drag deliberately.
-      scrollZoom: false,
-    })
-    map.current = m
-    if (import.meta.env.DEV) window.__tripmap = m
+    const m = L.map(holder.current, {
+      // A map inside a scrolling page shouldn't eat the scroll; people can still
+      // pinch and drag deliberately.
+      scrollWheelZoom: false,
+      zoomControl: false,
+    }).setView([pickup.lat, pickup.lng], 11)
 
-    // A tile server that's down or blocked must not leave a broken grey box.
-    m.on('error', (e) => {
-      if (import.meta.env.DEV) console.error('[TripMap]', e?.error?.message ?? e)
-      if (!cancelled) setFailed(true)
-    })
+    L.tileLayer(TILES, { attribution: ATTRIBUTION, maxZoom: 19 })
+      // A tile server that's down must not leave a broken grey box.
+      .on('tileerror', () => setFailed(true))
+      .addTo(m)
 
-    m.on('load', () => {
-      if (cancelled) return
-      const draggable = Boolean(onMove)
+    L.control.zoom({ position: 'bottomright' }).addTo(m)
 
-      markers.current.pickup = new Marker({ element: pin('#0369a1', 'A'), draggable })
-        .setLngLat([pickup.lng, pickup.lat])
-        .addTo(m)
-      markers.current.dropoff = new Marker({ element: pin('#15803d', 'B'), draggable })
-        .setLngLat([dropoff.lng, dropoff.lat])
-        .addTo(m)
+    const draggable = Boolean(onMove)
+    layers.current.pickup = L.marker([pickup.lat, pickup.lng], {
+      icon: pinIcon('#0369a1', 'A'),
+      draggable,
+    }).addTo(m)
+    layers.current.dropoff = L.marker([dropoff.lat, dropoff.lng], {
+      icon: pinIcon('#15803d', 'B'),
+      draggable,
+    }).addTo(m)
 
-      // Dragging is how someone corrects a pin that landed on the street
-      // instead of at their gate — South African house numbers are largely
-      // absent from OpenStreetMap, so that is the normal case, not an edge one.
-      if (draggable) {
-        for (const leg of ['pickup', 'dropoff']) {
-          markers.current[leg].on('dragend', () => {
-            const { lat, lng } = markers.current[leg].getLngLat()
-            onMove(leg, { lat, lng })
-          })
-        }
+    // Dragging is how someone corrects a pin that landed on the street instead
+    // of at their gate — South African house numbers are largely absent from
+    // OpenStreetMap, so that is the normal case, not an edge one.
+    if (draggable) {
+      for (const leg of ['pickup', 'dropoff']) {
+        layers.current[leg].on('dragend', (e) => {
+          const { lat, lng } = e.target.getLatLng()
+          onMove(leg, { lat, lng })
+        })
       }
+    }
 
-      m.addSource('route', {
-        type: 'geojson',
-        data: { type: 'Feature', geometry: { type: 'LineString', coordinates: [] } },
-      })
-      // Two lines: a wide pale casing under a solid one, so the route stays
-      // readable over both dark roads and pale ground.
-      m.addLayer({
-        id: 'route-casing',
-        type: 'line',
-        source: 'route',
-        paint: { 'line-color': '#ffffff', 'line-width': 7, 'line-opacity': 0.9 },
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-      })
-      m.addLayer({
-        id: 'route-line',
-        type: 'line',
-        source: 'route',
-        paint: { 'line-color': '#0369a1', 'line-width': 4 },
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
-      })
-
-      setReady(true)
-    })
-
+    map.current = m
     return () => {
-      cancelled = true
       m.remove()
       map.current = null
-      markers.current = { pickup: null, dropoff: null }
-      setReady(false)
+      layers.current = { pickup: null, dropoff: null, route: null }
     }
-    // Built once for a given trip; see the effect below for coordinate changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLocatable(pickup) && isLocatable(dropoff)])
 
-  // Coordinates changed — either a new address, or a pin dragged. Move the
-  // markers and redraw the route without touching the map itself.
+  // Coordinates changed — a new address, or a pin dragged. Move the markers and
+  // redraw the route without touching the map itself.
   useEffect(() => {
     const m = map.current
-    if (!ready || !m || !isLocatable(pickup) || !isLocatable(dropoff)) return
+    if (!m || !isLocatable(pickup) || !isLocatable(dropoff)) return
 
-    markers.current.pickup?.setLngLat([pickup.lng, pickup.lat])
-    markers.current.dropoff?.setLngLat([dropoff.lng, dropoff.lat])
+    layers.current.pickup?.setLatLng([pickup.lat, pickup.lng])
+    layers.current.dropoff?.setLatLng([dropoff.lat, dropoff.lng])
 
     let cancelled = false
     const ac = new AbortController()
@@ -128,28 +99,32 @@ export default function TripMap({ pickup, dropoff, height = 200, onMove = null }
     routeShape(pickup, dropoff, { signal: ac.signal }).then((shape) => {
       if (cancelled || !map.current) return
 
-      const bounds = new LngLatBounds(
-        [pickup.lng, pickup.lat],
-        [pickup.lng, pickup.lat],
-      ).extend([dropoff.lng, dropoff.lat])
-
-      const src = m.getSource('route')
-      if (src) {
-        src.setData({
-          type: 'Feature',
-          geometry: { type: 'LineString', coordinates: shape ?? [] },
-        })
+      if (layers.current.route) {
+        m.removeLayer(layers.current.route)
+        layers.current.route = null
       }
-      if (shape) for (const c of shape) bounds.extend(c)
 
-      m.fitBounds(bounds, { padding: 36, maxZoom: 15, duration: 300 })
+      let bounds = L.latLngBounds([pickup.lat, pickup.lng], [dropoff.lat, dropoff.lng])
+
+      if (shape) {
+        // OSRM returns [lng, lat]; Leaflet wants the other way round.
+        const line = shape.map(([lng, lat]) => [lat, lng])
+        layers.current.route = L.polyline(line, {
+          color: '#0369a1',
+          weight: 4,
+          opacity: 0.9,
+        }).addTo(m)
+        bounds = layers.current.route.getBounds()
+      }
+
+      m.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 })
     })
 
     return () => {
       cancelled = true
       ac.abort()
     }
-  }, [ready, pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng])
+  }, [pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng])
 
   // An address with no map location has nothing to draw.
   if (!isLocatable(pickup) || !isLocatable(dropoff)) return null
@@ -157,7 +132,7 @@ export default function TripMap({ pickup, dropoff, height = 200, onMove = null }
   if (failed) {
     return (
       <p className="tripmap-failed">
-        Map unavailable right now - the distance and prices below are unaffected.
+        Map unavailable right now - the distance and prices are unaffected.
       </p>
     )
   }
