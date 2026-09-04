@@ -160,6 +160,49 @@ export function newAlerts({ threads, listingIds, role, seen }) {
   return { alerts: fresh, keys: new Set(alerts.map((a) => a.key)) }
 }
 
+/**
+ * The trip currently under way, for the notification that sits in the shade and
+ * updates itself — `{ key, title, body }`, or null when nothing is moving.
+ *
+ * Customer only. A driver watching their own position tick down a notification
+ * would be absurd; they are the one driving.
+ *
+ * The key changes whenever the wording does, which is how the caller knows to
+ * rewrite the line rather than leaving a stale minutes figure sitting there.
+ */
+export function liveTripNotice(threads, role) {
+  if (role === 'driver') return null
+
+  for (const t of threads) {
+    for (const m of t.messages) {
+      const b = m.booking
+      if (m.kind !== 'booking' || !b) continue
+      if (!b.tripStartedAt || b.arrivedAt) continue
+      if (b.status === 'cancelled' || b.status === 'done') continue
+
+      const first = (b.driverName ?? 'Your driver').split(' ')[0]
+
+      // Under way but no position yet: the driver has tapped start and their
+      // GPS has not reported in. Say something true rather than nothing.
+      if (!b.live || !b.dropoffAt || !Number.isFinite(b.dropoffAt.lat)) {
+        return {
+          key: `live:${b.id}:starting`,
+          title: `${first} has started your trip`,
+          body: `On the way to ${b.dropoff}.`,
+        }
+      }
+
+      const mins = minutesFor(haversineKm(b.live, b.dropoffAt))
+      return {
+        key: `live:${b.id}:${mins}`,
+        title: `${first} is on the way`,
+        body: `About ${mins} minute${mins === 1 ? '' : 's'} from ${b.dropoff}.`,
+      }
+    }
+  }
+  return null
+}
+
 /** Threads where the other person spoke last — the unread count. */
 export const waitingOnMe = (threads, mine) =>
   threads.filter((t) => {

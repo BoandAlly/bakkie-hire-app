@@ -18,8 +18,10 @@ import {
   cancelBookingReminders,
   notifyNow,
   askForNotificationsOnce,
+  showLiveTrip,
+  clearLiveTrip,
 } from './lib/notify.js'
-import { newAlerts } from './lib/alerts.js'
+import { newAlerts, liveTripNotice } from './lib/alerts.js'
 import {
   loadSession,
   saveSession,
@@ -177,44 +179,6 @@ export default function App() {
   // and your friend on the other must stay two different people.
   useEffect(() => saveSession(session), [session])
 
-  // A driver signing in is the right moment to ask about notifications: work
-  // arrives whether the app is open or not, and a missed trip is money. Waiting
-  // for the first notification would mean the permission prompt swallows the
-  // very trip request it was meant to announce. Customers are asked later, when
-  // they send their first message — see sendMessage.
-  useEffect(() => {
-    if (session.role === 'driver' && driver) askForNotificationsOnce('driver')
-  }, [session.role, driver])
-
-  // Notifications for anything the other person just did. Driven off the
-  // threads, so it works the same whether the change came from this phone or
-  // arrived from the other one through sync.
-  //
-  // The ref starts null and is filled on the first pass without notifying:
-  // otherwise opening the app would fire one notification per message ever
-  // received.
-  const seenAlerts = useRef(null)
-
-  useEffect(() => {
-    if (!session.role) return
-
-    const listingIds = session.role === 'driver' ? new Set(myListings.map((l) => l.id)) : null
-    const mineOnly =
-      session.role === 'driver'
-        ? threads
-        : threads.filter((t) => t.customerEmail === session.customerEmail)
-
-    const { alerts, keys } = newAlerts({
-      threads: mineOnly,
-      listingIds,
-      role: session.role,
-      seen: seenAlerts.current,
-    })
-
-    seenAlerts.current = keys
-    for (const a of alerts) notifyNow(a.key, a.title, a.body)
-  }, [threads, session.role, session.customerEmail, myListings])
-
   // Android's back button. Capacitor closes the app on back by default, so a
   // driver halfway through a listing taps back out of habit and loses it. This
   // makes it behave like every other Android app: back one screen, then to the
@@ -267,6 +231,61 @@ export default function App() {
     () => (driver ? listingsForPhone(listings, driver.phone) : []),
     [listings, driver],
   )
+
+  // A driver signing in is the right moment to ask about notifications: work
+  // arrives whether the app is open or not, and a missed trip is money. Waiting
+  // for the first notification would mean the permission prompt swallows the
+  // very trip request it was meant to announce. Customers are asked later, when
+  // they send their first message — see sendMessage.
+  useEffect(() => {
+    if (session.role === 'driver' && driver) askForNotificationsOnce('driver')
+  }, [session.role, driver])
+
+  // Notifications for anything the other person just did. Driven off the
+  // threads, so it works the same whether the change came from this phone or
+  // arrived from the other one through sync.
+  //
+  // The ref starts null and is filled on the first pass without notifying:
+  // otherwise opening the app would fire one notification per message ever
+  // received.
+  const seenAlerts = useRef(null)
+  // What the live-trip line currently says, so it is only rewritten on a change.
+  const liveNoticeKey = useRef(null)
+
+  useEffect(() => {
+    if (!session.role) return
+
+    const listingIds = session.role === 'driver' ? new Set(myListings.map((l) => l.id)) : null
+    const mineOnly =
+      session.role === 'driver'
+        ? threads
+        : threads.filter((t) => t.customerEmail === session.customerEmail)
+
+    const { alerts, keys } = newAlerts({
+      threads: mineOnly,
+      listingIds,
+      role: session.role,
+      seen: seenAlerts.current,
+    })
+
+    seenAlerts.current = keys
+    for (const a of alerts) notifyNow(a.key, a.title, a.body)
+
+    // The trip in progress gets one notification that rewrites itself as the
+    // driver moves, rather than a new one per position. Rewritten only when the
+    // wording actually changes, so a GPS tick every few seconds does not buzz
+    // the phone every few seconds.
+    const notice = liveTripNotice(mineOnly, session.role)
+    if (notice) {
+      if (notice.key !== liveNoticeKey.current) {
+        liveNoticeKey.current = notice.key
+        showLiveTrip(notice.title, notice.body)
+      }
+    } else if (liveNoticeKey.current) {
+      liveNoticeKey.current = null
+      clearLiveTrip()
+    }
+  }, [threads, session.role, session.customerEmail, myListings])
 
   // Keep the driver's leave-time reminders in sync with their bookings. Fires
   // native notifications (30 min / 5 min / at leave-time) for each confirmed,

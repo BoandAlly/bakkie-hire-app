@@ -7,6 +7,63 @@ When you (or Claude) make a meaningful change, add a short entry here before pus
 
 ---
 
+## 2026-09-04 — Megan — the trip ticks away in the notification shade, and a crash fix
+
+**Read this bit first: `main` was crashing on startup.** The change before this
+one ("Ask about notifications when the answer matters") put the driver
+permission prompt near the top of `App.jsx`, above the line that works out who
+the signed-in driver is. JavaScript will not let you mention a `const` before it
+is declared, so the app threw before it drew anything — a blank screen for both
+drivers and customers. If you pulled that commit and thought you had broken
+something, you had not. Fixed by moving both notification effects below the
+declarations they use.
+
+Worth knowing, because linting did not catch this one: `no-undef` only spots
+names that exist nowhere. This name existed, just later in the file. What caught
+it was opening the app in a browser and reading the console — still the thing
+worth doing before every build.
+
+**The new bit: a live trip notification, like a ride app.**
+
+When the driver taps "Start trip", the customer now gets a notification that
+stays put in the shade and rewrites itself as the bakkie moves:
+
+> **Sipho is on the way** — About 17 minutes from Umhlanga Ridge.
+
+Details that matter:
+- **One notification, not a stream.** It has a fixed id, so each update replaces
+  the last. It is also only rewritten when the *wording* changes, so a GPS tick
+  every few seconds does not buzz the phone every few seconds.
+- **It cannot be swiped away** while the trip is on (`ongoing`), and it clears
+  itself the moment the driver marks arrived, or the trip is cancelled.
+- **Customer only.** A driver watching their own position count down would be
+  daft; they are the one driving.
+- If the driver has tapped start but their GPS has not reported yet, it says
+  "Sipho has started your trip" rather than an ETA it cannot honestly give.
+- The "almost there" buzz at 3 km still fires separately. That one is meant to
+  interrupt you; this one is meant to sit quietly and be glanceable.
+
+**And the tracking line on the map now behaves like a ride app.** The route used
+to be one flat blue line for the whole trip. Now the road still ahead is the
+strong blue and the part already driven fades out behind the pin, so the line
+visibly shrinks as the bakkie gets closer. It costs nothing extra: the road
+shape is still fetched once and simply split at whichever point the driver is
+nearest, so a new position is pure arithmetic, not another request.
+
+Tested at three positions along a Durban CBD → Umhlanga run: at the pick-up the
+line is 95% ahead, a third of the way up it splits, and near the drop-off only
+21% is left. The Explore trip map (no driver) draws one plain blue line as
+before.
+
+**Where things live:** `showLiveTrip` / `clearLiveTrip` in `src/lib/notify.js`
+(the shade), `liveTripNotice` in `src/lib/alerts.js` (what it should say),
+`paintRoute` in `src/components/TripMap.jsx` (the two-tone line).
+
+**Still not done, and still the biggest gap:** driver document upload. The "ID &
+licence checked" badge on the listings verifies nothing at all. That is a real
+liability the moment anyone outside the two of us uses this.
+---
+
 ## 2026-09-04 — Megan — live trip tracking (pick-up → drop-off)
 
 Added the thing we'd been meaning to: the customer can now watch the vehicle

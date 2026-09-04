@@ -177,3 +177,44 @@ export async function askForNotificationsOnce(who) {
   }
   await ensurePermission()
 }
+
+// ---------------------------------------------------------------------------
+// The one that stays put
+// ---------------------------------------------------------------------------
+//
+// A trip under way gets a single notification that sits in the shade and
+// rewrites itself as the driver moves, the way a ride-hailing app does. Same id
+// every time, so an update replaces the line rather than stacking another one.
+//
+// `ongoing` asks Android not to let it be swiped away, and autoCancel is off so
+// tapping it does not dismiss it - it should live exactly as long as the trip.
+
+const LIVE_TRIP_ID = 424242
+
+export async function showLiveTrip(title, body) {
+  try {
+    if (!(await ensurePermission())) return
+    await LocalNotifications.schedule({
+      notifications: [
+        {
+          id: LIVE_TRIP_ID,
+          title,
+          body,
+          ongoing: true,
+          autoCancel: false,
+          schedule: { at: new Date(Date.now() + 400) },
+        },
+      ],
+    })
+  } catch {
+    /* no notifications here - the on-screen map still shows everything */
+  }
+}
+
+export async function clearLiveTrip() {
+  try {
+    await LocalNotifications.cancel({ notifications: [{ id: LIVE_TRIP_ID }] })
+  } catch {
+    /* nothing showing */
+  }
+}

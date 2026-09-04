@@ -64,8 +64,7 @@ entirely, so there is nothing to see in the network tab.
   legacy anon key is available, the app re-reads every 2.5 seconds instead, so
   the other phone updates within a few seconds rather than instantly. Details in
   `WORKLOG.md`.
-- **Do not test with photos.** They are stored at full camera resolution, which
-  overflows the browser's storage limit; the save fails silently and the listing
-  is lost on reload. Needs shrinking before it is safe to use.
-- **Star ratings on the browse cards are fake.** They are still the frozen seed
-  numbers, not the ratings customers actually give.
+- Photos and star ratings used to be listed here as broken. Both are fixed:
+  photos are shrunk before saving (`src/lib/photos.js`) so they no longer blow
+  the storage limit, and the browse cards show real customer ratings, falling
+  back to the seeded star marked "no rating yet".
