@@ -489,6 +489,56 @@ export default function App() {
     )
   }
 
+  // The trip this driver is currently driving, if any — a confirmed pickup they
+  // have tapped "Start trip" on and not yet marked arrived. Just its id, so the
+  // value stays stable while its live position updates; the watch below only
+  // restarts when the trip itself starts or ends, not on every GPS tick.
+  const activeTripId = useMemo(() => {
+    if (session.role !== 'driver' || !driver) return null
+    const myIds = new Set(myListings.map((l) => l.id))
+    for (const t of threads) {
+      if (!myIds.has(t.listingId)) continue
+      for (const m of t.messages) {
+        const b = m.booking
+        if (m.kind === 'booking' && b?.status === 'confirmed' && b.tripStartedAt && !b.arrivedAt) {
+          return b.id
+        }
+      }
+    }
+    return null
+  }, [threads, session.role, driver, myListings])
+
+  // Share the driver's location while a trip is under way, and only then. The
+  // watch is the phone's own GPS — no library, no cost — and each fix is written
+  // onto the booking, which already syncs to the other phone. It runs only while
+  // the app is open (foreground): following a phone in the background is a
+  // separate Play Store permission and a common rejection, so it is left out on
+  // purpose. Stops the moment the trip ends or this screen closes.
+  useEffect(() => {
+    if (!activeTripId || !('geolocation' in navigator)) return
+    let last = 0
+    const id = navigator.geolocation.watchPosition(
+      (pos) => {
+        // A fix every few seconds is plenty — the cross-phone poll is 2.5s — and
+        // it keeps the booking row from being rewritten many times a second.
+        const now = Date.now()
+        if (now - last < 4000) return
+        last = now
+        patchBooking(activeTripId, {
+          live: { lat: pos.coords.latitude, lng: pos.coords.longitude, at: new Date().toISOString() },
+        })
+      },
+      () => {
+        // Declined or unavailable — the trip still runs, just without a live pin.
+      },
+      { enableHighAccuracy: true, maximumAge: 5000, timeout: 20000 },
+    )
+    return () => navigator.geolocation.clearWatch(id)
+    // patchBooking is a fresh closure each render; including it would restart the
+    // watch constantly. The id it needs is captured, so this is safe.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTripId])
+
   const current = useMemo(() => listings.find((l) => l.id === view.id), [listings, view.id])
   const editing = useMemo(
     () => listings.find((l) => l.id === view.editId),

@@ -12,6 +12,21 @@
 //   for every message you have ever received.
 
 import { lastMessage } from './threads.js'
+import { haversineKm } from './geo.js'
+
+// How close counts as "almost there": roughly the point where it is worth
+// putting your shoes on. Much earlier is noise, much later and the bakkie is
+// already outside.
+//
+// Measured in kilometres rather than through travelMinutes, which carries a
+// five-minute floor and three minutes of padding for the leave-time reminders.
+// Those defaults made a five-minute threshold unreachable beyond about one
+// kilometre - by which point the notification is useless.
+const ALMOST_THERE_KM = 3
+const TOWN_KMH = 35
+
+/** Rough minutes for a short hop, with none of the leave-time padding. */
+const minutesFor = (km) => Math.max(1, Math.round((km / TOWN_KMH) * 60))
 
 /** Every message across the threads this person can see, tagged with context. */
 function walk(threads, listingIds) {
@@ -80,6 +95,33 @@ export function newAlerts({ threads, listingIds, role, seen }) {
           title: `${first} cancelled the pickup`,
           body: `${b.pickup} → ${b.dropoff}`,
         })
+      }
+
+      // Nearly at the drop-off. This is the one notification with a real job
+      // to do: it is what lets someone stop watching a map and go downstairs.
+      //
+      // Fired once per trip rather than on every position update, and only
+      // while the goods are actually moving - a driver who has already arrived,
+      // or has not set off, is not "almost there".
+      if (
+        !isDriver &&
+        b.live &&
+        b.tripStartedAt &&
+        !b.arrivedAt &&
+        b.dropoffAt &&
+        Number.isFinite(b.dropoffAt.lat)
+      ) {
+        const kmAway = haversineKm(b.live, b.dropoffAt)
+        if (kmAway <= ALMOST_THERE_KM) {
+          const mins = minutesFor(kmAway)
+          alerts.push({
+            // Keyed on the booking alone, so this fires once for the trip
+            // rather than again on every position update as they get closer.
+            key: `almost:${b.id}`,
+            title: `${first} is almost there`,
+            body: `About ${mins} minute${mins === 1 ? '' : 's'} away from ${b.dropoff}.`,
+          })
+        }
       }
 
       // Asking to move a time un-confirms the booking, so it needs saying

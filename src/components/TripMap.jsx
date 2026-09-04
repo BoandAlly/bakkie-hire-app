@@ -27,10 +27,16 @@ const pinIcon = (color, label) =>
     iconAnchor: [13, 13],
   })
 
-export default function TripMap({ pickup, dropoff, height = 200, onMove = null }) {
+// A live position while the goods are in transit — {lat, lng} or null. Shown as
+// a third pin that moves, so the customer can watch the trip run from pick-up to
+// drop-off. It is deliberately only the paid leg: the driver's drive to reach
+// the customer is never on this map.
+const hasCoords = (p) => p && Number.isFinite(p.lat) && Number.isFinite(p.lng)
+
+export default function TripMap({ pickup, dropoff, driver = null, height = 200, onMove = null }) {
   const holder = useRef(null)
   const map = useRef(null)
-  const layers = useRef({ pickup: null, dropoff: null, route: null })
+  const layers = useRef({ pickup: null, dropoff: null, route: null, driver: null })
   const [failed, setFailed] = useState(false)
 
   // Built once. Coordinates are handled by the effect below, moving the markers
@@ -75,14 +81,50 @@ export default function TripMap({ pickup, dropoff, height = 200, onMove = null }
       }
     }
 
+    // A live driver position may already be set when the map is first built
+    // (the customer opens a trip already under way). Read the current prop
+    // rather than a dependency: this effect only runs on a rebuild, and the
+    // moving updates are handled by the effect below.
+    if (hasCoords(driver)) {
+      layers.current.driver = L.marker([driver.lat, driver.lng], {
+        icon: pinIcon('#b45309', 'D'),
+        zIndexOffset: 1000,
+      }).addTo(m)
+    }
+
     map.current = m
     return () => {
       m.remove()
       map.current = null
-      layers.current = { pickup: null, dropoff: null, route: null }
+      layers.current = { pickup: null, dropoff: null, route: null, driver: null }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLocatable(pickup) && isLocatable(dropoff)])
+
+  // The driver moving. Its own effect so a new position slides the pin without
+  // touching the route or the pick-up/drop-off markers. Follows the pin gently
+  // — panned to keep it in view, but never zoomed, so the customer's own
+  // pinch-to-zoom is left alone.
+  useEffect(() => {
+    const m = map.current
+    if (!m) return
+    if (hasCoords(driver)) {
+      if (layers.current.driver) {
+        layers.current.driver.setLatLng([driver.lat, driver.lng])
+      } else {
+        layers.current.driver = L.marker([driver.lat, driver.lng], {
+          icon: pinIcon('#b45309', 'D'),
+          zIndexOffset: 1000,
+        }).addTo(m)
+      }
+      if (!m.getBounds().contains([driver.lat, driver.lng])) {
+        m.panTo([driver.lat, driver.lng], { animate: true })
+      }
+    } else if (layers.current.driver) {
+      m.removeLayer(layers.current.driver)
+      layers.current.driver = null
+    }
+  }, [driver])
 
   // Coordinates changed — a new address, or a pin dragged. Move the markers and
   // redraw the route without touching the map itself.

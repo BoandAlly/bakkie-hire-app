@@ -7,6 +7,48 @@ When you (or Claude) make a meaningful change, add a short entry here before pus
 
 ---
 
+## 2026-09-04 — Megan — live trip tracking (pick-up → drop-off)
+
+Added the thing we'd been meaning to: the customer can now watch the vehicle
+move on a map **while the job is happening** — from the pick-up to the drop-off.
+
+Important scope, on purpose: it is **only the paid leg**. The driver's drive out
+to reach the customer, and where they live, are never tracked. Tracking turns on
+when the driver says they've set off and turns off when they arrive.
+
+**How it works for each side**
+- **Driver:** on a confirmed pickup there's now a **"Start trip — share my
+  location"** button. Tapping it starts sharing (a little "Sharing your live
+  location" strip shows), and **"I've arrived"** stops it. Nothing is shared
+  before Start or after Arrived.
+- **Customer:** while the driver's en route they see a **live map** with the
+  driver's pin moving, plus a rough **"arriving in about X min."** Before the
+  driver sets off it just says they'll appear once he leaves.
+
+**What it's built on — no new anything**
+- The phone's own GPS (same `navigator.geolocation` we already use for photo
+  tags and "use my location"). No new library, no maps bill, no new service.
+- The moving position rides on the existing Supabase sync — it's just a `live`
+  field on the booking. So it updates on the **same ~2.5s poll** as everything
+  else: the dot hops every couple of seconds rather than gliding. Fine for now;
+  it'll smooth out once the realtime key issue is sorted (see rough edges).
+- **Foreground only** — it shares while the app is open. Background tracking
+  (following the phone when the app is closed) is a separate Play Store approval
+  and a common rejection reason, so I left it out deliberately. Matches SPEC §4.
+
+**Files:** new live pin in `src/components/TripMap.jsx` (a moving "D" marker),
+a `TripTracking` block in `src/pages/Chat.jsx`, and the GPS watch itself in
+`src/App.jsx` (runs only while a trip you started is in progress). Booking now
+carries `tripStartedAt`, `arrivedAt`, `live {lat,lng,at}` — all synced already,
+no schema change needed.
+
+**Half-finished / worth knowing:** the ETA is a straight-line guess at ~35 km/h
+(same as the leave-time reminders), not a real routed ETA — good enough as a
+guide. And on a confirmed booking with a typed address the map can't place,
+there's no live map (we say so); the trip still runs.
+
+---
+
 ## 2026-09-04 — Megan — merged the two sides together
 
 Your UI update and the branch work are now one app. Everything you built is
