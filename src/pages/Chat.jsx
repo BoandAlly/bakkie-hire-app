@@ -276,8 +276,6 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
     return { distanceKm, q: quote(listing, { distanceKm, helpers: 0 }) }
   }, [from, to, listing])
 
-  const unlocatable = haveTrip && (!isLocatable(trip.pickup) || !isLocatable(trip.dropoff))
-
   const goodsText = goods === 'Something else' ? goodsOther.trim() : goods
   // The driver decides whether to take a job from what is being moved, so the
   // request isn't sendable until they've been told and the customer has
@@ -986,7 +984,11 @@ function TripRequest({ listing, firstName, customerName, onSend }) {
   // The trip is set on Explore, where it prices the whole driver list. Read
   // here, not edited: one place owns it, so the estimate a customer compared
   // against is the same job they end up sending.
-  const trip = loadTrip()
+  // Read once, not on every render. A fresh object each time would make the
+  // distance lookup below re-fire forever once its dependencies are honest.
+  // Safe to freeze: this form only shows on an empty chat, and the trip is set
+  // over on Explore before anyone gets here.
+  const trip = useMemo(() => loadTrip(), [])
   const haveTrip = isTripSet(trip)
 
   const [goods, setGoods] = useState('')
@@ -999,6 +1001,11 @@ function TripRequest({ listing, firstName, customerName, onSend }) {
   const [declared, setDeclared] = useState(false)
   const [km, setKm] = useState(null)
 
+  // An address the map could not place: the trip is real, the estimate is not.
+  // This was referenced here while only being defined in FareCalculator - a
+  // different component - so opening a chat threw a ReferenceError.
+  const unlocatable = isTripSet(trip) && (!isLocatable(trip.pickup) || !isLocatable(trip.dropoff))
+
   useEffect(() => {
     if (!haveTrip) return
     let alive = true
@@ -1006,7 +1013,7 @@ function TripRequest({ listing, firstName, customerName, onSend }) {
     return () => {
       alive = false
     }
-  }, [haveTrip, trip.pickup?.lat, trip.dropoff?.lat])
+  }, [haveTrip, trip.pickup, trip.dropoff])
 
   const goodsText = goods === 'Something else' ? goodsOther.trim() : goods
 

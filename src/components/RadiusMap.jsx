@@ -54,9 +54,13 @@ export default function RadiusMap({ center, radiusKm, onMovePin }) {
     })
     mapRef.current = map
 
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    // Carto rather than tile.openstreetmap.org. OSM's tile policy forbids
+    // "distributing an app that uses tiles from openstreetmap.org" and access
+    // can be withdrawn without notice, so this would have failed on launch
+    // rather than in testing. Same OpenStreetMap data, same attribution.
+    L.tileLayer('https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors',
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
     })
       .on('tileerror', () => setTilesFailed(true))
       .addTo(map)

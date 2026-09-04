@@ -124,7 +124,10 @@ export default function TripMap({ pickup, dropoff, height = 200, onMove = null }
       cancelled = true
       ac.abort()
     }
-  }, [pickup?.lat, pickup?.lng, dropoff?.lat, dropoff?.lng])
+    // The legs themselves, so the linter can check this list. They only change
+    // identity when the trip changes - Explore rebuilds them on an edit and
+    // nothing else touches them - so this does not redraw on every render.
+  }, [pickup, dropoff])
 
   // An address with no map location has nothing to draw.
   if (!isLocatable(pickup) || !isLocatable(dropoff)) return null

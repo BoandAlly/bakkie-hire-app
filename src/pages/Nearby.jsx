@@ -6,7 +6,7 @@ import { roadKm } from '../lib/geo.js'
 import Icon, { StarIcon } from '../components/Icon.jsx'
 import AddressField from '../components/AddressField.jsx'
 import TripMap from '../components/TripMap.jsx'
-import { roadDistanceBetween, fullAddress, isLocatable } from '../lib/geocode.js'
+import { roadDistanceBetween, isLocatable } from '../lib/geocode.js'
 import { loadTrip, saveTrip, isTripSet } from '../lib/trip.js'
 
 // Everything within reach, sorted however the customer wants to look at it.
@@ -78,8 +78,11 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
       alive = false
       ac.abort()
     }
-    // Coordinates, not object identity - a re-render must not re-fetch.
-  }, [tripSet, trip.pickup?.lat, trip.pickup?.lng, trip.dropoff?.lat, trip.dropoff?.lng])
+    // Depends on the legs themselves so the linter can verify this list, but
+    // they only change identity when the trip actually changes - setLeg builds
+    // a new object on edit and nothing else touches them - so this does not
+    // re-fetch on every render.
+  }, [tripSet, trip.pickup, trip.dropoff])
 
   const setLeg = (patch) => {
     const next = { ...trip, ...patch }

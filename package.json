@@ -8,7 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "dev:secure": "node -e \"process.env.HTTPS='1';require('child_process').spawn(process.platform==='win32'?'npx.cmd':'npx',['vite'],{stdio:'inherit',env:process.env})\"",
-    "build:distances": "node scripts/build-distances.mjs"
+    "build:distances": "node scripts/build-distances.mjs",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.0",
@@ -22,10 +23,14 @@
   },
   "devDependencies": {
     "@capacitor/cli": "^8.5.0",
+    "@eslint/js": "^10.0.1",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.0.3",
+    "eslint": "^10.9.1",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.12.0",
     "vite": "^8.1.1"
   }
 }
