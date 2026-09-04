@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Brand blue, matching --brand in src/index.css. Was #FFFFFF behind the
+    <!-- Brand blue, matching the brand colour in src/index.css. Was #FFFFFF behind the
          stock Android robot the Capacitor template ships with. -->
     <color name="ic_launcher_background">#0369A1</color>
 </resources>
