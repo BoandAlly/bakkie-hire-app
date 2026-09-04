@@ -4,8 +4,7 @@ import { VEHICLE_CLASSES, classById, VehicleSilhouette } from '../data/vehicleCl
 import { rateLabel, quote, rand } from '../lib/pricing.js'
 import { roadKm } from '../lib/geo.js'
 import Icon, { StarIcon } from '../components/Icon.jsx'
-import AddressField from '../components/AddressField.jsx'
-import TripMap from '../components/TripMap.jsx'
+import TripPlanner from '../components/TripPlanner.jsx'
 import { roadDistanceBetween, isLocatable, fullAddress } from '../lib/geocode.js'
 import { loadTrip, saveTrip, isTripSet } from '../lib/trip.js'
 
@@ -92,21 +91,9 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
 
   // Starts closed — a single "Where to?" bar you tap to open, the way Uber's
   // home screen works. Whether or not a trip is already set, the list of drivers
-  // is the first thing you see, not a form.
+  // is the first thing you see, not a form. Tapping it opens the full-screen
+  // trip planner (TripPlanner) over everything.
   const [tripOpen, setTripOpen] = useState(false)
-
-  // Scrolling means you have moved on to looking at drivers, so the trip folds
-  // itself away. Only once it is actually set: collapsing a half-filled form
-  // under someone would lose what they were typing.
-  useEffect(() => {
-    if (!tripOpen || !tripSet) return
-
-    const onScroll = () => {
-      if (window.scrollY > 40) setTripOpen(false)
-    }
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [tripOpen, tripSet])
 
   const rows = useMemo(() => {
     if (!coords) return []
@@ -220,92 +207,43 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         </button>
       </header>
 
-      {/* One search bar, Uber-style. Closed, it's a single line you tap; open,
-          it drops down the pick-up and drop-off. It folds back to the line once
-          set, so the driver list is what you see while browsing. */}
-      {!tripOpen ? (
-        <button
-          className="tripsearch"
-          onClick={() => setTripOpen(true)}
-          aria-expanded={false}
-          aria-label="Set your pick-up and drop-off"
-        >
-          <Icon name="search" size={18} className="dim" />
-          {tripSet ? (
-            <span className="tripsearch-set">
-              <strong>
-                {fullAddress(trip.pickup)} &rarr; {fullAddress(trip.dropoff)}
-              </strong>
-              <em>
-                {unlocatable
-                  ? 'Not found on the map — no estimate'
-                  : tripKm == null
-                    ? 'Measuring the route…'
-                    : `${tripKm} km · prices below are for this trip`}
-              </em>
-            </span>
-          ) : (
-            <span className="tripsearch-empty">Where to? Set your pick-up and drop-off</span>
-          )}
-          <Icon name="chevron" size={15} className="dim" />
-        </button>
-      ) : (
-        <div className="trippanel open">
-          <button
-            className="trippanel-head"
-            onClick={() => setTripOpen(false)}
-            aria-expanded={true}
-          >
-            <Icon name="pin" size={17} />
-            <span className="trippanel-summary">
-              <strong>Your trip</strong>
-              <em>Enter your pick-up and drop-off to price and match drivers</em>
-            </span>
-            <Icon name="chevron" size={16} className="dim" />
-          </button>
+      {/* One search bar, Uber-style: a single line you tap to open the
+          full-screen trip planner. It shows the set trip once you have one, so
+          the driver list is what you see while browsing. */}
+      <button
+        className="tripsearch"
+        onClick={() => setTripOpen(true)}
+        aria-label="Set your pick-up and drop-off"
+      >
+        <Icon name="search" size={18} className="dim" />
+        {tripSet ? (
+          <span className="tripsearch-set">
+            <strong>
+              {fullAddress(trip.pickup)} &rarr; {fullAddress(trip.dropoff)}
+            </strong>
+            <em>
+              {unlocatable
+                ? 'Not found on the map — no estimate'
+                : tripKm == null
+                  ? 'Measuring the route…'
+                  : `${tripKm} km · prices below are for this trip`}
+            </em>
+          </span>
+        ) : (
+          <span className="tripsearch-empty">Where to? Set your pick-up and drop-off</span>
+        )}
+        <Icon name="chevron" size={15} className="dim" />
+      </button>
 
-          <div className="trippanel-body">
-            <div className="trippicker">
-              <AddressField
-                label="Pick-up"
-                allowCurrent
-                value={trip.pickup}
-                onChange={(p) => setLeg({ pickup: p })}
-                placeholder="Street, place or suburb"
-              />
-              <AddressField
-                label="Drop-off"
-                value={trip.dropoff}
-                onChange={(p) => setLeg({ dropoff: p })}
-                placeholder="Street, place or suburb"
-              />
-            </div>
-
-            {trip.pickup && trip.dropoff && trip.pickup.label === trip.dropoff.label && (
-              <p className="blockhint error">Pick two different places.</p>
-            )}
-
-            {unlocatable && (
-              <p className="tripstatus warn">
-                We couldn&rsquo;t find that address on the map, so there&rsquo;s no estimate
-                for this trip &mdash; check it reads correctly and your driver will quote you.
-              </p>
-            )}
-
-            {tripSet && (
-              <TripMap
-                pickup={trip.pickup}
-                dropoff={trip.dropoff}
-                height={180}
-                onMove={(leg, coords) => {
-                  const current = trip[leg]
-                  if (!current) return
-                  setLeg({ [leg]: { ...current, ...coords, kind: 'pinned' } })
-                }}
-              />
-            )}
-          </div>
-        </div>
+      {tripOpen && (
+        <TripPlanner
+          trip={trip}
+          onSetLeg={setLeg}
+          onClose={() => setTripOpen(false)}
+          count={rows.length}
+          tripKm={tripKm}
+          unlocatable={unlocatable}
+        />
       )}
 
       <div className="searchbar">

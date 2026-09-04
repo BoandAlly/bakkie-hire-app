@@ -7,6 +7,38 @@ When you (or Claude) make a meaningful change, add a short entry here before pus
 
 ---
 
+## 2026-09-04 — Megan — the "Where to?" box is now a full-screen trip planner, like Uber
+
+The pick-up / drop-off search used to drop down a little panel inside the browse
+screen, with a cramped suggestion list squashed under each box. It felt wrong.
+Now tapping **"Where to?"** opens a proper full-screen page — **"Plan your
+trip"** — the way a ride app does it:
+
+- Pick-up (green dot) and drop-off (square dot) pinned at the top, joined by a
+  line.
+- **One** big suggestion list fills the rest of the screen and follows whichever
+  field you're editing — type, and matching addresses pop up underneath.
+- Pick a pick-up and it jumps you straight to the drop-off, Uber-style.
+- Once both ends are set it turns into a little confirm map (drag a pin to nudge
+  it) with the optional "house number / gate" boxes and a **"Show N vehicles"**
+  button back to the list.
+- "Use my current location" still there for the pick-up.
+
+**What changed in the code:**
+- New component `src/components/TripPlanner.jsx` — the whole full-screen page.
+- `src/pages/Nearby.jsx` — the "Where to?" bar now just opens `TripPlanner`
+  instead of expanding an inline panel. Removed the old inline panel and the
+  "collapse the panel when you scroll" effect (a full-screen page doesn't need
+  it). The bar still shows your set trip + the km once you have one.
+- `src/index.css` — styles for the planner, appended at the very bottom.
+- The old `AddressField` component is still used elsewhere, so I left it alone.
+
+Nothing half-finished. It uses the exact same address search as before
+(`src/lib/geocode.js` — our suburb list first, then OpenStreetMap), so no new
+services. Lints clean (the two warnings it prints were already there), builds,
+and I clicked through the whole flow in the browser — Umhlanga → Ballito priced
+a 31 km trip and the vehicle cards re-priced for it.
+
 ## 2026-09-04 — Megan — the trip ticks away in the notification shade, and a crash fix
 
 **Read this bit first: `main` was crashing on startup.** The change before this

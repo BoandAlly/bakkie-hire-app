@@ -2104,3 +2104,119 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
   background: rgba(15, 23, 42, 0.92); color: #fff;
   font-size: 13.5px; font-weight: 600; box-shadow: var(--shadow);
 }
+
+/* ==========================================================================
+   Full-screen trip planner (the Uber-style "Plan your trip" overlay)
+   ========================================================================== */
+
+.tripplanner {
+  position: fixed; inset: 0; z-index: 80;
+  display: flex; flex-direction: column;
+  background: var(--bg);
+}
+/* Phone-width column, centred on a wide screen. */
+.tripplanner > * { width: 100%; max-width: 640px; margin-inline: auto; }
+
+.tripplanner-head {
+  display: flex; align-items: center; gap: 8px;
+  padding: 12px 12px 12px 6px;
+  background: var(--surface); border-bottom: 1px solid var(--border);
+}
+.tripplanner-head h2 { font-size: 17px; font-weight: 800; letter-spacing: -0.2px; }
+.tripplanner-back {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 40px; flex: none;
+  border: 0; border-radius: var(--r-pill); background: none; color: var(--ink);
+  cursor: pointer;
+}
+.tripplanner-back:hover { background: var(--muted); }
+
+.tripplanner-fields { padding: 14px 16px 6px; background: var(--surface); }
+
+/* The two connected fields: a round pick-up dot, a square drop-off dot, joined
+   by a short line — the shorthand every ride app uses. */
+.tripform {
+  border: 1px solid var(--border); border-radius: var(--r);
+  background: var(--surface); padding: 0 12px;
+}
+.tripform-row { position: relative; display: flex; align-items: center; gap: 12px; min-height: 54px; }
+.tripform-row + .tripform-row { border-top: 1px solid var(--border); }
+.tripform-dot { flex: none; width: 11px; height: 11px; }
+.tripform-dot.pickup { border-radius: 50%; background: var(--green); }
+.tripform-dot.dropoff { border-radius: 2px; background: var(--navy); }
+/* Connector between the two dots. */
+.tripform-row.pickup::before {
+  content: ''; position: absolute; left: 5px; top: 34px;
+  width: 1px; height: 28px; background: var(--border-2);
+}
+.tripform-input {
+  flex: 1; min-width: 0; height: 50px;
+  border: 0; background: none; outline: none;
+  font-size: 15.5px; color: var(--ink);
+}
+.tripform-input::placeholder { color: var(--ink-4); }
+.tripform-row.active .tripform-input { font-weight: 600; }
+.tripform-clear {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; flex: none;
+  border: 0; border-radius: var(--r-pill); background: var(--muted); color: var(--ink-3);
+  cursor: pointer;
+}
+.tripform-clear:hover { color: var(--ink); }
+
+.tripplanner-body { flex: 1; overflow-y: auto; background: var(--bg); }
+
+/* "Use my current location", sitting above the results like Uber's map pin row. */
+.tripplanner-here {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 15px 16px; border: 0; border-bottom: 1px solid var(--border);
+  background: none; text-align: left; color: var(--blue);
+  font-size: 14.5px; font-weight: 600; cursor: pointer;
+}
+.tripplanner-here:hover:not(:disabled) { background: var(--muted); }
+.tripplanner-here:disabled { opacity: 0.6; cursor: default; }
+.tripplanner-here .icon { flex: none; }
+
+.tripplanner-results { list-style: none; }
+.tripplanner-results button {
+  display: flex; align-items: center; gap: 12px; width: 100%;
+  padding: 14px 16px; border: 0; border-bottom: 1px solid var(--border);
+  background: none; text-align: left; color: var(--ink); cursor: pointer;
+}
+.tripplanner-results button:hover { background: var(--muted); }
+.tripplanner-results .icon { flex: none; }
+.tripplanner-results strong { display: block; font-size: 15px; font-weight: 600; }
+.tripplanner-results em {
+  display: block; margin-top: 1px; font-style: normal;
+  font-size: 12px; font-weight: 600; color: var(--blue);
+}
+
+.tripplanner-hint { padding: 16px; font-size: 14px; color: var(--ink-3); }
+.tripplanner-warn { padding: 12px 16px; font-size: 13.5px; line-height: 1.5; color: var(--red); }
+
+.tripplanner-notfound { padding: 16px; }
+.tripplanner-notfound p { font-size: 14px; line-height: 1.5; margin-bottom: 12px; color: var(--ink-2); }
+.tripplanner-notfound em {
+  display: block; margin-top: 8px; font-style: normal;
+  font-size: 12.5px; color: var(--ink-3);
+}
+
+.tripplanner-review { padding: 16px; }
+.tripplanner-km { font-size: 14px; font-weight: 600; color: var(--ink-2); margin-bottom: 12px; }
+.tripplanner-review .tripmap { margin-bottom: 14px; }
+.tripplanner-detail { display: block; margin-top: 12px; }
+.tripplanner-detail span {
+  display: block; margin-bottom: 6px;
+  font-size: 12.5px; font-weight: 600; color: var(--ink-2);
+}
+.tripplanner-detail input {
+  width: 100%; min-height: 44px; padding: 0 12px;
+  border: 1px solid var(--border); border-radius: var(--r-sm);
+  background: var(--surface); font-size: 14.5px; outline: none; color: var(--ink);
+}
+.tripplanner-detail input:focus { border-color: var(--blue); }
+
+.tripplanner-foot {
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  background: var(--surface); border-top: 1px solid var(--border);
+}
