@@ -57,9 +57,17 @@ export function newAlerts({ threads, listingIds, role, seen }) {
   const mine = isDriver ? 'owner' : 'customer'
   const alerts = []
 
+  // Which conversation the alert being built belongs to. Carried through to the
+  // notification so that tapping it opens that chat rather than wherever the
+  // person happened to be last.
+  let where = null
+  const add = (a) => alerts.push({ ...a, to: where })
+
   for (const { m, thread } of walk(threads, listingIds)) {
     // Your own doing is never news to you.
     if (m.from === mine) continue
+
+    where = { listingId: thread.listingId, customerEmail: thread.customerEmail ?? null }
 
     const who = isDriver ? thread.customerName ?? 'A customer' : m.booking?.driverName ?? 'Your driver'
     const first = who.split(' ')[0]
@@ -70,7 +78,7 @@ export function newAlerts({ threads, listingIds, role, seen }) {
       // A trip arriving is the driver's most important notification: it is
       // work, and someone is waiting on an answer.
       if (isDriver) {
-        alerts.push({
+        add({
           key: keyOf(m, 'request'),
           title: `New trip from ${first}`,
           body: `${b.goods ? `${b.goods} — ` : ''}${b.pickup} → ${b.dropoff}`,
@@ -80,7 +88,7 @@ export function newAlerts({ threads, listingIds, role, seen }) {
       // Status is on the booking rather than in a message, so it is keyed on
       // the status itself: confirming, then cancelling, are two events.
       if (b.status === 'confirmed') {
-        alerts.push({
+        add({
           key: keyOf(m, `confirmed:${b.price ?? 0}`),
           title: isDriver ? `${first} accepted` : `${first} confirmed your pickup`,
           body: b.price
@@ -90,7 +98,7 @@ export function newAlerts({ threads, listingIds, role, seen }) {
       }
 
       if (b.status === 'cancelled') {
-        alerts.push({
+        add({
           key: keyOf(m, 'cancelled'),
           title: `${first} cancelled the pickup`,
           body: `${b.pickup} → ${b.dropoff}`,
@@ -114,7 +122,7 @@ export function newAlerts({ threads, listingIds, role, seen }) {
         const kmAway = haversineKm(b.live, b.dropoffAt)
         if (kmAway <= ALMOST_THERE_KM) {
           const mins = minutesFor(kmAway)
-          alerts.push({
+          add({
             // Keyed on the booking alone, so this fires once for the trip
             // rather than again on every position update as they get closer.
             key: `almost:${b.id}`,
@@ -127,7 +135,7 @@ export function newAlerts({ threads, listingIds, role, seen }) {
       // Asking to move a time un-confirms the booking, so it needs saying
       // plainly - the customer has to agree again for it to be back on.
       if (b.rescheduleAsked && b.status === 'pending') {
-        alerts.push({
+        add({
           key: keyOf(m, 'reschedule'),
           title: `${first} asked to reschedule`,
           body: 'Your pickup is no longer confirmed — check the new time and confirm again.',
@@ -137,7 +145,7 @@ export function newAlerts({ threads, listingIds, role, seen }) {
     }
 
     if (m.kind === 'photo') {
-      alerts.push({
+      add({
         key: keyOf(m, 'photo'),
         title: `${first} sent a photo`,
         body: m.text ?? 'Delivery photo',
@@ -145,7 +153,7 @@ export function newAlerts({ threads, listingIds, role, seen }) {
       continue
     }
 
-    alerts.push({
+    add({
       key: keyOf(m, 'msg'),
       title: first,
       body: (m.text ?? '').slice(0, 140),
@@ -174,6 +182,7 @@ export function liveTripNotice(threads, role) {
   if (role === 'driver') return null
 
   for (const t of threads) {
+    const to = { listingId: t.listingId, customerEmail: t.customerEmail ?? null }
     for (const m of t.messages) {
       const b = m.booking
       if (m.kind !== 'booking' || !b) continue
@@ -187,6 +196,7 @@ export function liveTripNotice(threads, role) {
       if (!b.live || !b.dropoffAt || !Number.isFinite(b.dropoffAt.lat)) {
         return {
           key: `live:${b.id}:starting`,
+          to,
           title: `${first} has started your trip`,
           body: `On the way to ${b.dropoff}.`,
         }
@@ -195,6 +205,7 @@ export function liveTripNotice(threads, role) {
       const mins = minutesFor(haversineKm(b.live, b.dropoffAt))
       return {
         key: `live:${b.id}:${mins}`,
+        to,
         title: `${first} is on the way`,
         body: `About ${mins} minute${mins === 1 ? '' : 's'} from ${b.dropoff}.`,
       }

@@ -7,6 +7,85 @@ When you (or Claude) make a meaningful change, add a short entry here before pus
 
 ---
 
+## 2026-09-04 — Megan — a moved time that actually moves, a real cancel dialog, and notifications that look like us
+
+Three things, all in the chat.
+
+**1. Asking to reschedule now changes the date on the card.**
+
+It used to send a message saying "could we do Tuesday instead?" and leave the
+card still showing Monday — so both people were looking at a date neither of
+them was planning to keep. The requested time now rides on the booking itself
+(`proposedDate` / `proposedTime`), and the card shows it as **New date** /
+**New time**, with a line above saying what it would replace.
+
+It stays a request until it is agreed. The original date is untouched, so the
+driver’s leave-time reminders still run off the time that was actually agreed.
+Accepting is what makes the new time real — at that moment it becomes the date,
+the proposal is cleared, and the "asked to move this" line disappears.
+
+One thing I changed while I was in there: asking to reschedule used to clear
+**both** confirmations, which left the customer staring at a new time with no
+button to accept it — waiting on a driver who had already answered. The driver
+now stays confirmed (naming a time is committing to it) and only the customer
+has to agree again. Unless no price has been named yet, in which case nothing is
+confirmed, because confirming locks the price and that would leave the driver
+unable to ever set one.
+
+**2. Cancelling asks properly now.**
+
+There was already a "Cancel pickup" button after confirmation, but the first tap
+set an invisible flag and only the *second* tap did anything — on the confirmed
+card the label never changed, so it looked completely dead. It is now a real
+dialog: **"Cancel this pickup?"**, saying who gets told and what falls away,
+with **Keep it** and **Yes, cancel**.
+
+Not `window.confirm` — Android’s WebView can suppress those, which is the same
+trap the price editing fell into.
+
+Also fixed: an **"as soon as possible"** job could not be cancelled by anyone at
+all. Cancelling was gated on the pickup being in the future, and an ASAP job has
+no date to be in the future of. Cancelling is now open until the driver actually
+taps Start trip.
+
+**3. Notifications look like they came from this app.**
+
+They were showing a generic exclamation mark, because nothing had ever told
+Capacitor what icon to use. Turns out the app icon was never set either — it was
+still the stock Android robot from the template, which is why there was nothing
+of ours to show.
+
+So there is now an actual logo: a white bakkie, drawn from the same glyph the
+app uses everywhere, on the brand blue.
+
+- **Status bar** — `ic_stat_bakkie.xml`. Android throws the colour away here and
+  keeps only the shape, so it has to be a white silhouette; a colour logo would
+  come out as a featureless blob. Drawn as filled bodywork rather than thin
+  outlines, which close up into mush at 24dp.
+- **In the notification** — `ic_notify_large.xml`, the colour version, shown on
+  the right-hand side.
+- **Home screen** — the same bakkie replaces the Android robot. Note the legacy
+  PNG icons for Android 7 are still the old ones; anything Android 8 or newer
+  (which is effectively everyone) gets the new one.
+
+**Tapping one opens the right chat now.** It used to just open the app wherever
+you last left it, which made the notification feel like it had done nothing.
+Each one now carries which conversation it belongs to, and a tap goes straight
+there — the driver’s side and the customer’s side open different screens onto
+the same thread, so it picks the right one.
+
+**And they are grouped into three Android channels** — Trips, Messages, and Trip
+in progress. That is mostly tidiness, except for the last one: the live trip line
+rewrites itself as the bakkie moves, and on a normal channel every rewrite makes
+a noise. That channel is silent, so it updates in the shade without buzzing.
+
+Lints clean, builds, and I clicked through all of it in the browser: reschedule
+from the driver side, the new date appearing on the customer’s card, accepting
+it, the cancel dialog on both sides, and the ASAP case. **Not built as an APK
+yet** — the icons are the one part a browser cannot check, so they want a look on
+a real phone before anyone trusts them.
+---
+
 ## 2026-09-04 — Megan — real house-number addresses, via TomTom (optional key)
 
 **Why:** the free map (OpenStreetMap/Photon) has no South African house numbers,

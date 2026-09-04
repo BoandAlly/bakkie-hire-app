@@ -1,0 +1,35 @@
+<!--
+  The app icon's foreground layer.
+
+  Replaces the stock Android robot that came with the Capacitor template - the
+  placeholder was still shipping as the home-screen icon, which is also why
+  notifications had nothing of the app's own to show.
+
+  Adaptive icons are drawn at 108dp but only the middle 72dp is guaranteed
+  visible; the launcher crops the rest to whatever mask the phone uses (circle,
+  squircle, rounded square). So the bakkie is drawn inside that safe centre with
+  room to spare, and the blue behind it comes from the background layer in
+  values/ic_launcher_background.xml.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- Scaled 2x and centred: the 24-unit glyph lands in the safe zone. -->
+    <group android:translateX="30" android:translateY="31" android:scaleX="2" android:scaleY="2">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M2,6 L13.2,6 L13.2,16 L2,16 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M13.2,9 L17.6,9 L21.2,13 L21.2,16 L13.2,16 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M4.5,17.2 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M15,17.2 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+    </group>
+</vector>

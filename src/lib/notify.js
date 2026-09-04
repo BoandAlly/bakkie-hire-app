@@ -15,6 +15,47 @@ import { bookingDateTime, travelMinutes, bookingDateLabel } from './threads.js'
 // minutes-before-leave for each of the three nudges
 const SLOTS = [30, 5, 0]
 
+// ---------------------------------------------------------------------------
+// How a notification looks, and where it lands
+// ---------------------------------------------------------------------------
+//
+// The status-bar icon is a silhouette Android fills in itself, so it has to be
+// a white-on-transparent shape - see android/.../drawable/ic_stat_bakkie.xml.
+// It is named in capacitor.config.json; with nothing named there Capacitor
+// falls back to a generic exclamation mark, which is what people were seeing.
+//
+// The large icon keeps its colours and is the app's actual logo, so an expanded
+// notification is recognisably this app rather than an anonymous grey line.
+const LARGE_ICON = 'ic_notify_large'
+
+// Channels are Android's own grouping. Worth having for one specific reason
+// beyond tidiness: the trip-in-progress line updates as the bakkie moves, and
+// on a default channel every update makes a noise. LOW is silent - it appears
+// in the shade and stays there, which is exactly what that one is for.
+const CHANNELS = [
+  { id: 'bakkie-trips', name: 'Trips and bookings', importance: 5,
+    description: 'New trips, confirmations, cancellations and time changes.' },
+  { id: 'bakkie-messages', name: 'Messages', importance: 4,
+    description: 'Messages and photos from the other person.' },
+  { id: 'bakkie-live', name: 'Trip in progress', importance: 2,
+    description: 'The quiet line that tracks a trip while it is running.' },
+]
+
+// Created once per app run. Android ignores a channel it already has, so this
+// is safe to call repeatedly - but a notification sent to a channel that does
+// not exist yet is dropped silently, so it has to happen before the first one.
+let channelsReady = null
+function ensureChannels() {
+  channelsReady ??= (async () => {
+    try {
+      for (const c of CHANNELS) await LocalNotifications.createChannel({ ...c, vibration: c.importance > 2 })
+    } catch {
+      // Web, or a platform without channels - notifications still work.
+    }
+  })()
+  return channelsReady
+}
+
 // A stable positive 31-bit notification id from the booking id + slot, so the
 // same reminder can be cancelled later without tracking ids ourselves.
 function notifId(bookingId, slot) {
@@ -41,11 +82,39 @@ function hhmm(date) {
 export async function ensurePermission() {
   try {
     const current = await LocalNotifications.checkPermissions()
-    if (current.display === 'granted') return true
-    const asked = await LocalNotifications.requestPermissions()
-    return asked.display === 'granted'
+    if (current.display !== 'granted') {
+      const asked = await LocalNotifications.requestPermissions()
+      if (asked.display !== 'granted') return false
+    }
+    await ensureChannels()
+    return true
   } catch {
     return false
+  }
+}
+
+/**
+ * Tell the app which conversation a notification belongs to, so tapping it can
+ * open that chat instead of dumping the person on whatever screen they left.
+ * Returns a function that stops listening.
+ */
+export function onNotificationTap(handler) {
+  let remove = null
+  let dead = false
+  LocalNotifications.addListener('localNotificationActionPerformed', (e) => {
+    const extra = e?.notification?.extra
+    if (extra?.listingId) handler(extra)
+  })
+    .then((h) => {
+      if (dead) h.remove()
+      else remove = () => h.remove()
+    })
+    .catch(() => {
+      // No plugin on this platform - tapping simply opens the app as before.
+    })
+  return () => {
+    dead = true
+    remove?.()
   }
 }
 
@@ -81,6 +150,9 @@ export async function scheduleBookingReminders(booking, origin) {
         slot === 0
           ? `Leave now for ${booking.pickup} to reach your ${booking.time} pickup.`
           : `${dayLabel} pickup in ${booking.pickup} — leave around ${leaveLabel} (in ${slot} min).`,
+      largeIcon: LARGE_ICON,
+      channelId: 'bakkie-trips',
+      extra: { listingId: booking.listingId ?? null, customerEmail: booking.customerEmail ?? null },
       schedule: { at: new Date(at) },
     })
   }
@@ -129,7 +201,7 @@ function idFrom(key) {
  * or the plugin is unavailable - a missed notification must never break the
  * thing that triggered it.
  */
-export async function notifyNow(key, title, body) {
+export async function notifyNow(key, title, body, { extra = null, kind = 'trips' } = {}) {
   try {
     if (!(await ensurePermission())) return
     await LocalNotifications.schedule({
@@ -138,6 +210,10 @@ export async function notifyNow(key, title, body) {
           id: idFrom(key),
           title,
           body,
+          largeIcon: LARGE_ICON,
+          channelId: kind === 'messages' ? 'bakkie-messages' : 'bakkie-trips',
+          // Which conversation this is about, so a tap lands in that chat.
+          extra,
           // A second or two out, because scheduling in the past is rejected by
           // some Android versions.
           schedule: { at: new Date(Date.now() + 1200) },
@@ -191,7 +267,7 @@ export async function askForNotificationsOnce(who) {
 
 const LIVE_TRIP_ID = 424242
 
-export async function showLiveTrip(title, body) {
+export async function showLiveTrip(title, body, extra = null) {
   try {
     if (!(await ensurePermission())) return
     await LocalNotifications.schedule({
@@ -200,6 +276,12 @@ export async function showLiveTrip(title, body) {
           id: LIVE_TRIP_ID,
           title,
           body,
+          largeIcon: LARGE_ICON,
+          // The quiet channel: this line rewrites itself every time the bakkie
+          // moves far enough to change the wording, and on a normal channel
+          // each of those rewrites would buzz the phone.
+          channelId: 'bakkie-live',
+          extra,
           ongoing: true,
           autoCancel: false,
           schedule: { at: new Date(Date.now() + 400) },

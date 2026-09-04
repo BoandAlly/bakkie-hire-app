@@ -20,6 +20,7 @@ import {
   askForNotificationsOnce,
   showLiveTrip,
   clearLiveTrip,
+  onNotificationTap,
 } from './lib/notify.js'
 import { newAlerts, liveTripNotice } from './lib/alerts.js'
 import {
@@ -179,6 +180,34 @@ export default function App() {
   // and your friend on the other must stay two different people.
   useEffect(() => saveSession(session), [session])
 
+  // Who is signed in, kept in a ref purely so the listener below can read the
+  // current role without being torn down and re-registered whenever it changes.
+  const sessionRole = useRef(session.role)
+  useEffect(() => {
+    sessionRole.current = session.role
+  }, [session.role])
+
+  // Tapping a notification should land you on the thing it was telling you
+  // about. Without this it opens the app on whatever screen you left, which
+  // makes the notification feel like it did nothing.
+  //
+  // setView rather than go(): it is stable across renders, so this listener is
+  // registered once for the life of the app instead of being torn down and
+  // rebuilt every time anything changes.
+  useEffect(() => {
+    return onNotificationTap(({ listingId, customerEmail }) => {
+      // The two sides open different screens onto the same conversation: a
+      // driver's chat is keyed on which customer it is with, because one
+      // vehicle can have several going at once.
+      setView(
+        sessionRole.current === 'driver'
+          ? { name: 'opchat', id: listingId, customerEmail }
+          : { name: 'chat', id: listingId, from: 'messages' },
+      )
+      window.scrollTo({ top: 0 })
+    })
+  }, [])
+
   // Android's back button. Capacitor closes the app on back by default, so a
   // driver halfway through a listing taps back out of habit and loses it. This
   // makes it behave like every other Android app: back one screen, then to the
@@ -269,7 +298,8 @@ export default function App() {
     })
 
     seenAlerts.current = keys
-    for (const a of alerts) notifyNow(a.key, a.title, a.body)
+    for (const a of alerts)
+      notifyNow(a.key, a.title, a.body, { extra: a.to, kind: a.kind ?? 'trips' })
 
     // The trip in progress gets one notification that rewrites itself as the
     // driver moves, rather than a new one per position. Rewritten only when the
@@ -279,7 +309,7 @@ export default function App() {
     if (notice) {
       if (notice.key !== liveNoticeKey.current) {
         liveNoticeKey.current = notice.key
-        showLiveTrip(notice.title, notice.body)
+        showLiveTrip(notice.title, notice.body, notice.to)
       }
     } else if (liveNoticeKey.current) {
       liveNoticeKey.current = null

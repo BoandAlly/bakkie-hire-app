@@ -6,7 +6,6 @@ import {
   timeLabel,
   bookingSummary,
   bookingDateLabel,
-  isUpcoming,
   liveBooking,
   travelMinutes,
 } from '../lib/threads.js'
@@ -233,7 +232,7 @@ export default function Chat({
         <RescheduleRequest
           firstName={thread?.customerName?.split(' ')[0] ?? 'the customer'}
           onClose={() => setBookOpen(false)}
-          onAsk={(text) => {
+          onAsk={(text, proposed) => {
             // Asking for a different time un-agrees the booking. A confirmation
             // is a confirmation of a specific time, so once that time is in
             // question nobody is confirmed any more and the customer has to
@@ -243,9 +242,24 @@ export default function Chat({
             if (live) {
               onPatchBooking(live.id, {
                 status: 'pending',
-                driverConfirmed: false,
+                // The driver stays confirmed: naming a time is committing to
+                // it. Only the customer's agreement is withdrawn, which is what
+                // gives them an Accept button to answer with. Clearing both
+                // left the new time sitting there with nothing to press - the
+                // customer waiting on a driver who had already answered.
+                //
+                // Unless there is no price yet: confirming locks the price, so
+                // doing it here would leave a driver who reschedules early
+                // unable to ever name one.
+                driverConfirmed: Boolean(live.price),
                 customerConfirmed: false,
                 rescheduleAsked: true,
+                // Held apart from date/time until it is agreed. The card shows
+                // this as the time on the table; accepting is what makes it the
+                // actual time, and until then reminders still run off the old
+                // one, because the old one is still what was agreed.
+                proposedDate: proposed.date,
+                proposedTime: proposed.time,
               })
             }
             send(text)
@@ -656,7 +670,17 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
   const mineConfirmed = isDriver ? b.driverConfirmed : b.customerConfirmed
   const otherConfirmed = isDriver ? b.customerConfirmed : b.driverConfirmed
   const otherName = isDriver ? custName : driverFirst
-  const canCancel = (pending || confirmed) && isUpcoming(b)
+
+  // A time the driver has asked for but nobody has agreed to yet.
+  const proposed =
+    b.rescheduleAsked && b.proposedDate && b.proposedTime
+      ? { date: b.proposedDate, time: b.proposedTime }
+      : null
+
+  // Cancelling stays open until the bakkie actually sets off. It used to be
+  // gated on isUpcoming, which meant an "as soon as possible" job - which has
+  // no date to be in the future of - could not be cancelled by anyone at all.
+  const canCancel = (pending || confirmed) && !b.tripStartedAt
 
   // The driver owns the price. They can change it right up until they confirm;
   // after that it is fixed, because the customer is being asked to accept that
@@ -694,16 +718,33 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
     }
     setClashWarning('')
     const key = isDriver ? 'driverConfirmed' : 'customerConfirmed'
-    patch({ [key]: true, ...(otherConfirmed ? { status: 'confirmed' } : {}) })
+    patch({
+      [key]: true,
+      ...(otherConfirmed
+        ? {
+            status: 'confirmed',
+            // Both sides have now agreed, so a time that was only being asked
+            // for becomes the time. Cleared out at the same moment, so the
+            // card stops flagging a change nobody is still deciding on.
+            ...(proposed
+              ? {
+                  date: proposed.date,
+                  time: proposed.time,
+                  asap: false,
+                  proposedDate: null,
+                  proposedTime: null,
+                  rescheduleAsked: false,
+                }
+              : {}),
+          }
+        : {}),
+    })
   }
 
-  // Cancelling is worth a second tap, but through the card rather than a
-  // browser dialog the phone may never show.
-  const cancelPickup = () => {
-    if (!confirmingCancel) {
-      setConfirmingCancel(true)
-      return
-    }
+  // Cancelling asks first, in the card rather than through window.confirm -
+  // Android's WebView can suppress those, and a cancel that silently does
+  // nothing is worse than no button at all.
+  const doCancel = () => {
     setConfirmingCancel(false)
     patch({ status: 'cancelled', cancelledBy: viewAs, cancelledAt: new Date().toISOString() })
   }
@@ -719,6 +760,27 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
 
   return (
     <div className={`bookingcard${cancelled ? ' cancelled' : ''}`}>
+      {confirmingCancel && (
+        <div className="askout" role="dialog" aria-modal="true">
+          <div className="askout-box">
+            <strong>Cancel this pickup?</strong>
+            <p>
+              {otherName} is told straight away
+              {b.price ? `, and the ${rand(b.price)} falls away` : ''}. This can&rsquo;t be
+              undone &mdash; a new pickup means starting again.
+            </p>
+            <div className="askout-row">
+              <button className="btn ghost" onClick={() => setConfirmingCancel(false)}>
+                Keep it
+              </button>
+              <button className="btn danger" onClick={doCancel}>
+                Yes, cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className={headClass}>
         <Icon name={head.icon} size={16} />
         <strong>{head.label}</strong>
@@ -740,11 +802,8 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
                 : 'Set a price to confirm'
               : `Quick confirm - ${rand(b.price)}`}
           </button>
-          <button
-            className={confirmingCancel ? 'btn danger' : 'btn ghost'}
-            onClick={cancelPickup}
-          >
-            {confirmingCancel ? 'Tap again to cancel' : 'Cancel'}
+          <button className="btn ghost" onClick={() => setConfirmingCancel(true)}>
+            Cancel
           </button>
         </div>
       )}
@@ -762,9 +821,40 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
         </p>
       )}
 
+      {/* A time the driver has asked for shows here as THE time, because it is
+          the one being decided on. What it would replace is spelt out
+          underneath rather than left for someone to remember. */}
+      {proposed && (
+        <p className="bookingcard-moved">
+          <Icon name="route" size={15} />
+          <span>
+            <strong>{driverFirst} asked to move this</strong>
+            <em>
+              Was {b.asap ? 'as soon as possible' : `${bookingDateLabel(b.date)} at ${b.time}`}
+              {isDriver
+                ? ` — not moved until ${custName.split(' ')[0]} accepts.`
+                : ' — accept below and the new time is the one that stands.'}
+            </em>
+          </span>
+        </p>
+      )}
+
       <div className="bookingcard-rows">
-        <Row label="Date" value={b.asap ? 'As soon as possible' : bookingDateLabel(b.date)} />
-        {!b.asap && <Row label="Time" value={b.time} />}
+        <Row
+          label={proposed ? 'New date' : 'Date'}
+          value={
+            proposed
+              ? bookingDateLabel(proposed.date)
+              : b.asap
+                ? 'As soon as possible'
+                : bookingDateLabel(b.date)
+          }
+        />
+        {proposed ? (
+          <Row label="New time" value={proposed.time} />
+        ) : (
+          !b.asap && <Row label="Time" value={b.time} />
+        )}
         {b.goods && <Row label="Carrying" value={b.goods} />}
         {/* The driver navigates to the pick-up, so that is the one worth
             copying straight into their own maps app. */}
@@ -926,7 +1016,7 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
             </p>
           )}
           {canCancel && (
-            <button className="btn ghost full" onClick={cancelPickup}>
+            <button className="btn ghost full" onClick={() => setConfirmingCancel(true)}>
               Cancel pickup
             </button>
           )}
@@ -963,7 +1053,7 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
           )}
 
           {canCancel && (
-            <button className="btn ghost full" onClick={cancelPickup}>
+            <button className="btn ghost full" onClick={() => setConfirmingCancel(true)}>
               Cancel pickup
             </button>
           )}
@@ -1463,9 +1553,13 @@ function RescheduleRequest({ firstName, onClose, onAsk }) {
   const send = () => {
     if (!ready) return
     const when = `${bookingDateLabel(date)} at ${time}`
+    // The time goes up as data as well as words. A message saying "could we do
+    // Tuesday" leaves the card still showing Monday, which is the one thing
+    // both people are looking at.
     onAsk(
       `I can't make the time you asked for${why.trim() ? ` - ${why.trim()}` : ''}. ` +
         `Could we do ${when} instead? Let me know and I'll confirm.`,
+      { date, time },
     )
   }
 

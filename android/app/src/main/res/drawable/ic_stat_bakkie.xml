@@ -1,0 +1,38 @@
+<!--
+  The status-bar notification icon.
+
+  Android draws this as a silhouette: the colour is thrown away and only the
+  alpha channel survives, so it MUST be a solid shape on transparent. A colour
+  logo dropped in here comes out as a featureless blob - and no icon at all
+  gets you Capacitor's default exclamation mark, which is what this replaces.
+
+  Shape is the app's own truck glyph from src/components/Icon.jsx, redrawn as
+  filled bodywork rather than 2px outlines: at 24dp in a status bar, strokes
+  that thin close up into mush. The wheels sit proud of the chassis rather than
+  being cut into it, because a silhouette cannot show a hole.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+
+    <!-- Load bed. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M2,6 L13.2,6 L13.2,16 L2,16 Z" />
+
+    <!-- Cab, stepped down at the front the way a bakkie is. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M13.2,9 L17.6,9 L21.2,13 L21.2,16 L13.2,16 Z" />
+
+    <!-- Wheels, as two explicit half-arcs each: the one-arc shorthand leaves
+         the centre ambiguous and different tools resolve it differently. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M4.5,17.2 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M15,17.2 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+</vector>

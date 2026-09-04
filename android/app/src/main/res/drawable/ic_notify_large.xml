@@ -1,0 +1,34 @@
+<!--
+  The large icon: the square thumbnail Android shows on the right-hand side of
+  an expanded notification. Unlike the status-bar icon this one keeps its
+  colours, so it is the app's actual logo - brand blue with the white bakkie -
+  and it is what makes a notification read as coming from Bakkie Hire rather
+  than from a generic app.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="72dp"
+    android:height="72dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+
+    <!-- Brand blue tile, matching --brand in src/index.css. -->
+    <path
+        android:fillColor="#0369A1"
+        android:pathData="M0,0 L48,0 L48,48 L0,48 Z" />
+
+    <!-- The same bakkie as the status-bar icon, centred and scaled up. -->
+    <group android:translateX="12" android:translateY="12">
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M2,6 L13.2,6 L13.2,16 L2,16 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M13.2,9 L17.6,9 L21.2,13 L21.2,16 L13.2,16 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M4.5,17.2 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M15,17.2 a2.5,2.5 0 1,0 5,0 a2.5,2.5 0 1,0 -5,0 Z" />
+    </group>
+</vector>
