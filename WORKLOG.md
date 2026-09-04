@@ -62,6 +62,39 @@ before.
 **Still not done, and still the biggest gap:** driver document upload. The "ID &
 licence checked" badge on the listings verifies nothing at all. That is a real
 liability the moment anyone outside the two of us uses this.
+
+---
+
+## 2026-09-04 — Megan — one Uber-style search bar, and match on the pick-up
+
+Reworked the top of Explore based on how Uber's home screen feels.
+
+**One search bar instead of the two-box panel.** Explore now opens to a single
+line — "Where to? Set your pick-up and drop-off" — with the driver list right
+below it. Tap it and it drops down the pick-up and drop-off fields (and the map
+once both are set); it folds back to the line afterwards. It starts closed for
+everyone now, so the list is always the first thing you see, not a form.
+
+**Drivers are matched on the PICK-UP the customer enters — not the browse area.**
+This is the real fix. Before, the list hid drivers whose radius didn't reach
+*the area pill at the top* (which defaulted to Durban CBD for everyone), so the
+matching was off unless you'd changed your area by hand. Now, the moment a
+customer enters a pick-up, we measure each driver's radius from *that address*:
+a driver only appears if the pick-up falls inside the radius they set. Until a
+pick-up is entered we fall back to the browse area, so the list is never empty.
+
+**Nobody is forced to turn on GPS.** Typing the pick-up is enough — that address
+is the customer's location for matching. "Use my current location" is still
+there as a one-tap shortcut, but it's never required and never a gate.
+
+**The rule we agreed on the drop-off still holds:** the radius only gates the
+pick-up. The drop-off can be anywhere — it only prices the trip, it never hides
+a driver.
+
+Checked in the browser: a Cape Town pick-up returns 0 drivers ("Nothing in
+range here"); an Umhlanga pick-up returns the full list with distances measured
+from Umhlanga. All in `src/pages/Nearby.jsx` + a little CSS. No backend change.
+
 ---
 
 ## 2026-09-04 — Megan — live trip tracking (pick-up → drop-off)

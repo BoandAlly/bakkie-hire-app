@@ -2018,6 +2018,26 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
 .copyloc.compact { min-height: 28px; width: 28px; padding: 0; justify-content: center; }
 .bookingcard-row .copyloc { margin-left: 8px; }
 
+/* Collapsed trip = one Uber-style search bar (mirrors .searchbar). */
+.tripsearch {
+  display: flex; align-items: center; gap: 9px; width: 100%;
+  min-height: 46px; padding: 0 12px; margin-bottom: 12px;
+  border: 1px solid var(--border); border-radius: var(--r-pill);
+  background: var(--surface); text-align: left; color: var(--ink);
+  cursor: pointer; transition: border-color var(--fast);
+}
+.tripsearch:hover { border-color: var(--border-2); }
+.tripsearch > .icon { flex: none; }
+.tripsearch-empty { flex: 1; min-width: 0; font-size: 15px; color: var(--ink-4); }
+.tripsearch-set { flex: 1; min-width: 0; }
+.tripsearch-set strong {
+  display: block; font-size: 14px; font-weight: 700;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.tripsearch-set em {
+  display: block; margin-top: 1px; font-style: normal; font-size: 12px; color: var(--ink-3);
+}
+
 /* The trip, folded away once it is set. */
 .trippanel {
   margin-bottom: 12px;

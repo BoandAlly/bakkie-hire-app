@@ -90,9 +90,10 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     saveTrip(next)
   }
 
-  // Open when there is nothing to show yet, closed once a trip exists - coming
-  // back to browse should not mean scrolling past your own address again.
-  const [tripOpen, setTripOpen] = useState(() => !isTripSet(loadTrip()))
+  // Starts closed — a single "Where to?" bar you tap to open, the way Uber's
+  // home screen works. Whether or not a trip is already set, the list of drivers
+  // is the first thing you see, not a form.
+  const [tripOpen, setTripOpen] = useState(false)
 
   // Scrolling means you have moved on to looking at drivers, so the trip folds
   // itself away. Only once it is actually set: collapsing a half-filled form
@@ -111,6 +112,14 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
     if (!coords) return []
     const q = query.trim().toLowerCase()
 
+    // Where the customer is, for matching drivers. Once they enter a pick-up we
+    // measure from THAT address — it is where the job starts, so a driver only
+    // shows when the pick-up falls inside the radius they set. Until a pick-up
+    // is entered we fall back to the browse area, so the list is never empty and
+    // turning on GPS is never required — typing the address is enough.
+    const origin =
+      isLocatable(trip.pickup) ? { lat: trip.pickup.lat, lng: trip.pickup.lng } : coords
+
     const scored = listings
       .map((l) => {
         // The driver's exact pin if they dropped one on the coverage map,
@@ -118,7 +127,7 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         const base = l.baseCoords ?? placeByName(l.baseLocation)
         return {
           listing: l,
-          km: base ? roadKm(coords, base) : null,
+          km: base ? roadKm(origin, base) : null,
           // "Cheapest" prices a standard short move so per-km and per-hour
           // drivers can be compared on one rand total.
           // Priced for the actual trip once we know it; a fixed reference
@@ -130,7 +139,9 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
             : quote(l, { distanceKm: REFERENCE_KM })?.total ?? Infinity,
         }
       })
-      // An operator who won't travel this far isn't available to this customer.
+      // The driver only appears for customers whose pick-up falls inside the
+      // radius they chose. The drop-off never matters here — it can be anywhere;
+      // it only prices the trip further down.
       .filter(({ listing, km }) => km != null && km <= listing.serviceRadiusKm)
       // ...and inside the distance the customer asked for.
       .filter(({ km }) => (radiusKm ? km <= radiusKm : true))
@@ -158,6 +169,10 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
   }, [
     listings,
     coords,
+    // The pick-up drives the radius match, so a new pick-up must re-filter. Its
+    // identity only changes when the leg does (setLeg builds a fresh object),
+    // so this doesn't re-run on every render.
+    trip.pickup,
     query,
     classFilter,
     roundTripOnly,
@@ -205,41 +220,50 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
         </button>
       </header>
 
-      {/* The trip folds away once it is set. It matters while you are entering
-          it and stops mattering the moment you start looking at drivers, so it
-          collapses to one line rather than pushing the list off the screen. */}
-      <div className={tripOpen ? 'trippanel open' : 'trippanel'}>
+      {/* One search bar, Uber-style. Closed, it's a single line you tap; open,
+          it drops down the pick-up and drop-off. It folds back to the line once
+          set, so the driver list is what you see while browsing. */}
+      {!tripOpen ? (
         <button
-          className="trippanel-head"
-          onClick={() => setTripOpen((v) => !v)}
-          aria-expanded={tripOpen}
+          className="tripsearch"
+          onClick={() => setTripOpen(true)}
+          aria-expanded={false}
+          aria-label="Set your pick-up and drop-off"
         >
-          <Icon name="pin" size={17} />
-          <span className="trippanel-summary">
-            {tripSet ? (
-              <>
-                <strong>
-                  {fullAddress(trip.pickup)} &rarr; {fullAddress(trip.dropoff)}
-                </strong>
-                <em>
-                  {unlocatable
-                    ? 'Not found on the map - no estimate'
-                    : tripKm == null
-                      ? 'Measuring the route…'
-                      : `${tripKm} km · prices below are for this trip`}
-                </em>
-              </>
-            ) : (
-              <>
-                <strong>Where are you moving to?</strong>
-                <em>Add a pick-up and drop-off to price every driver for your trip</em>
-              </>
-            )}
-          </span>
-          <Icon name="chevron" size={16} className="dim" />
+          <Icon name="search" size={18} className="dim" />
+          {tripSet ? (
+            <span className="tripsearch-set">
+              <strong>
+                {fullAddress(trip.pickup)} &rarr; {fullAddress(trip.dropoff)}
+              </strong>
+              <em>
+                {unlocatable
+                  ? 'Not found on the map — no estimate'
+                  : tripKm == null
+                    ? 'Measuring the route…'
+                    : `${tripKm} km · prices below are for this trip`}
+              </em>
+            </span>
+          ) : (
+            <span className="tripsearch-empty">Where to? Set your pick-up and drop-off</span>
+          )}
+          <Icon name="chevron" size={15} className="dim" />
         </button>
+      ) : (
+        <div className="trippanel open">
+          <button
+            className="trippanel-head"
+            onClick={() => setTripOpen(false)}
+            aria-expanded={true}
+          >
+            <Icon name="pin" size={17} />
+            <span className="trippanel-summary">
+              <strong>Your trip</strong>
+              <em>Enter your pick-up and drop-off to price and match drivers</em>
+            </span>
+            <Icon name="chevron" size={16} className="dim" />
+          </button>
 
-        {tripOpen && (
           <div className="trippanel-body">
             <div className="trippicker">
               <AddressField
@@ -281,8 +305,8 @@ export default function Nearby({ listings, coords, areaName, onOpen, onChangeAre
               />
             )}
           </div>
-        )}
-      </div>
+        </div>
+      )}
 
       <div className="searchbar">
         <Icon name="search" size={18} className="dim" />
