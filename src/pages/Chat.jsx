@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { classById, VehicleSilhouette } from '../data/vehicleClasses.jsx'
-import { PLACES, routeDistanceKm } from '../data/places.js'
+import { PLACES } from '../data/places.js'
 import { quote, rateLabel, rand } from '../lib/pricing.js'
 import {
   timeLabel,
@@ -18,6 +18,7 @@ import { formatPhone } from '../lib/session.js'
 import Icon, { Stars } from '../components/Icon.jsx'
 import CopyLocation from '../components/CopyLocation.jsx'
 import TripMap from '../components/TripMap.jsx'
+import AddressField from '../components/AddressField.jsx'
 
 // Where the job actually gets arranged.
 
@@ -59,6 +60,10 @@ export default function Chat({
   const [draft, setDraft] = useState('')
   const [calcOpen, setCalcOpen] = useState(false)
   const [bookOpen, setBookOpen] = useState(false)
+  // The trip form no longer greets the customer automatically — the chat opens
+  // plain, and a button in the middle of it opens the form for anyone who wants
+  // to fill it in rather than just type.
+  const [tripOpen, setTripOpen] = useState(false)
   const [photoError, setPhotoError] = useState('')
   const logRef = useRef(null)
   const cls = classById(listing.vehicleClass)
@@ -138,17 +143,32 @@ export default function Chat({
             both people's evening, so the first message carries them or there is
             no first message. */}
         {messages.length === 0 && isCustomer && (
-          <TripRequest
-            listing={listing}
-            firstName={firstName}
-            customerName={thread?.customerName ?? 'Customer'}
-            onSend={(booking) =>
-              onSend(listing.id, 'customer', bookingSummary(booking), {
-                kind: 'booking',
-                booking,
-              })
-            }
-          />
+          tripOpen ? (
+            <TripRequest
+              listing={listing}
+              firstName={firstName}
+              customerName={thread?.customerName ?? 'Customer'}
+              onClose={() => setTripOpen(false)}
+              onSend={(booking) => {
+                onSend(listing.id, 'customer', bookingSummary(booking), {
+                  kind: 'booking',
+                  booking,
+                })
+                setTripOpen(false)
+              }}
+            />
+          ) : (
+            <div className="chat-intro chat-start">
+              <p>
+                This is the start of your chat with {firstName}. Send them the trip &mdash; the
+                when, the what and the where &mdash; or just type a message below.
+              </p>
+              <button className="btn primary" onClick={() => setTripOpen(true)}>
+                <Icon name="route" size={17} />
+                Tell {firstName} about the trip
+              </button>
+            </div>
+          )
         )}
 
         {messages.length === 0 && !isCustomer && (
@@ -275,8 +295,12 @@ const GOODS = [
 ]
 
 function FareCalculator({ listing, firstName, onClose, onAsk }) {
-  const [from, setFrom] = useState('')
-  const [to, setTo] = useState('')
+  // Pick-up and drop-off are now real addresses (place objects with coords),
+  // typed into the same address search the trip planner uses - not the old
+  // suburb dropdowns. So the estimate and the message to the driver carry the
+  // actual street, not just the area.
+  const [from, setFrom] = useState(null)
+  const [to, setTo] = useState(null)
   const [goods, setGoods] = useState('')
   const [goodsOther, setGoodsOther] = useState('')
   const [when, setWhen] = useState('now')
@@ -285,35 +309,52 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
   const [accompany, setAccompany] = useState(false)
   const [liftBack, setLiftBack] = useState(false)
   const [declared, setDeclared] = useState(false)
+  const [km, setKm] = useState(null)
 
-  // Where the job is — from the two area pickers below. Distance comes from the
-  // built-in area table, so the estimate is instant and never waits on a network
-  // lookup (a stalled online route used to leave the Ask button dead).
-  const fromLabel = from
-  const toLabel = to
+  const bothSet = Boolean(from && to)
+  const samePlace = bothSet && from.label === to.label
+  // A street the map couldn't place has no coordinates, so it can't be measured
+  // or priced - the trip is still real, the driver just quotes it in the chat.
+  const unlocatable = bothSet && (!isLocatable(from) || !isLocatable(to))
+
+  // Real addresses need a real routing lookup, so distance is fetched (with an
+  // offline fallback inside roadDistanceBetween) rather than read from a table.
+  useEffect(() => {
+    if (!bothSet || samePlace) {
+      setKm(null)
+      return
+    }
+    let alive = true
+    const ac = new AbortController()
+    roadDistanceBetween(from, to, { signal: ac.signal }).then((d) => alive && setKm(d))
+    return () => {
+      alive = false
+      ac.abort()
+    }
+  }, [from, to, bothSet, samePlace])
 
   const result = useMemo(() => {
-    const distanceKm = from && to && from !== to ? routeDistanceKm(from, to) : null
-    if (distanceKm == null) return null
-    return { distanceKm, q: quote(listing, { distanceKm, helpers: 0 }) }
-  }, [from, to, listing])
+    if (km == null) return null
+    return { distanceKm: km, q: quote(listing, { distanceKm: km, helpers: 0 }) }
+  }, [km, listing])
 
   const goodsText = goods === 'Something else' ? goodsOther.trim() : goods
   // The driver decides whether to take a job from what is being moved, so the
   // request isn't sendable until they've been told and the customer has
-  // confirmed it's accurate.
-  const ready = Boolean(result && goodsText && declared && (when === 'now' || date))
+  // confirmed it's accurate. A missing estimate (address not on the map) does
+  // not block it - the driver will quote.
+  const ready = Boolean(bothSet && !samePlace && goodsText && declared && (when === 'now' || date))
 
   const whenText =
     when === 'now'
       ? 'as soon as possible'
       : `on ${bookingDateLabel(date)}${time ? ` at ${time}` : ''}`
 
-  const askText = result
+  const askText = bothSet
     ? [
         `Hi ${firstName}, what would you charge to move ${goodsText.toLowerCase()} `,
-        `from ${fromLabel} to ${toLabel}, ${whenText}?`,
-        ` (About ${result.distanceKm} km — I estimated around ${rand(result.q.total)}.)`,
+        `from ${fullAddress(from)} to ${fullAddress(to)}, ${whenText}?`,
+        result ? ` (About ${result.distanceKm} km — I estimated around ${rand(result.q.total)}.)` : '',
         accompany ? ' I’d travel with the goods.' : '',
         accompany && liftBack ? ' I’d need a lift back too.' : '',
       ].join('')
@@ -328,29 +369,24 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
         </button>
       </div>
 
-      <div className="farecalc-fields">
-        <label className="field">
-          <span>Pick-up</span>
-          <select value={from} onChange={(e) => setFrom(e.target.value)}>
-            <option value="">Choose area</option>
-            {PLACES.map((p) => (
-              <option key={p.name}>{p.name}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Drop-off</span>
-          <select value={to} onChange={(e) => setTo(e.target.value)}>
-            <option value="">Choose area</option>
-            {PLACES.map((p) => (
-              <option key={p.name}>{p.name}</option>
-            ))}
-          </select>
-        </label>
+      <div className="trippicker">
+        <AddressField
+          label="Pick-up"
+          allowCurrent
+          value={from}
+          onChange={setFrom}
+          placeholder="Street, place or suburb"
+        />
+        <AddressField
+          label="Drop-off"
+          value={to}
+          onChange={setTo}
+          placeholder="Street, place or suburb"
+        />
       </div>
 
-      {from && to && from === to && (
-        <p className="farecalc-hint">Pick two different areas to get an estimate.</p>
+      {samePlace && (
+        <p className="farecalc-hint">Pick two different places to get an estimate.</p>
       )}
 
       <div className="tripfield">
@@ -453,24 +489,36 @@ function FareCalculator({ listing, firstName, onClose, onAsk }) {
         </span>
       </label>
 
-      {result && (
+      {bothSet && !samePlace && (
         <>
-          <div className="farecalc-result">
-            <span className="farecalc-total">
-              ≈ {rand(result.q.total)}
-              <em className="estnote">Estimated price only</em>
-            </span>
-            <span className="farecalc-basis">
-              {result.distanceKm} km · {rateLabel(listing)}
-              {listing.rateUnit === 'hour' && ` · ~${result.q.hours} hr`}
-              {result.q.minApplied && ' · minimum applies'}
-            </span>
-          </div>
-          <p className="farecalc-note">
-            This is only an estimate off {firstName}'s rate — the actual price may be higher
-            or lower. Helpers and anything extra aren't included; you agree the final price in
-            the chat.
-          </p>
+          {result ? (
+            <>
+              <div className="farecalc-result">
+                <span className="farecalc-total">
+                  ≈ {rand(result.q.total)}
+                  <em className="estnote">Estimated price only</em>
+                </span>
+                <span className="farecalc-basis">
+                  {result.distanceKm} km · {rateLabel(listing)}
+                  {listing.rateUnit === 'hour' && ` · ~${result.q.hours} hr`}
+                  {result.q.minApplied && ' · minimum applies'}
+                </span>
+              </div>
+              <p className="farecalc-note">
+                This is only an estimate off {firstName}'s rate — the actual price may be higher
+                or lower. Helpers and anything extra aren't included; you agree the final price in
+                the chat.
+              </p>
+            </>
+          ) : unlocatable ? (
+            <p className="farecalc-note">
+              We couldn’t find one of these on the map, so there’s no estimate — {firstName} will
+              quote you in the chat.
+            </p>
+          ) : (
+            <p className="farecalc-hint">Measuring the route…</p>
+          )}
+
           <button className="btn primary full" disabled={!ready} onClick={() => onAsk(askText)}>
             <Icon name="send" size={17} />
             Ask {firstName} about this trip
@@ -1157,7 +1205,7 @@ function StarPicker({ value, onChange }) {
 // This replaces the old driver-side "Book a pickup" form. The trip belongs to
 // the customer, so they are the one who states it; a driver who cannot make it
 // asks to reschedule rather than editing someone else's plans.
-function TripRequest({ listing, firstName, customerName, onSend }) {
+function TripRequest({ listing, firstName, customerName, onSend, onClose }) {
   // The trip is set on Explore, where it prices the whole driver list. Read
   // here, not edited: one place owns it, so the estimate a customer compared
   // against is the same job they end up sending.
@@ -1242,13 +1290,25 @@ function TripRequest({ listing, firstName, customerName, onSend }) {
           Add your pick-up and drop-off on the Explore tab first &mdash; {firstName} needs
           to know where the job is before they can price it.
         </p>
+        {onClose && (
+          <button className="btn secondary" onClick={onClose}>
+            Back to chat
+          </button>
+        )}
       </div>
     )
   }
 
   return (
     <div className="triprequest">
-      <h2>Tell {firstName} about the trip</h2>
+      <div className="triprequest-head">
+        <h2>Tell {firstName} about the trip</h2>
+        {onClose && (
+          <button className="triprequest-close" onClick={onClose} aria-label="Close and go back to the chat">
+            <Icon name="close" size={18} />
+          </button>
+        )}
+      </div>
       <p className="blockhint">
         This goes across as your first message. {firstName} needs the when, the what and the
         where before they can say yes or quote you.
@@ -1356,8 +1416,9 @@ function TripRequest({ listing, firstName, customerName, onSend }) {
       <label className="tripcheck">
         <input type="checkbox" checked={declared} onChange={(e) => setDeclared(e.target.checked)} />
         <span>
+          <span className="req" aria-hidden="true">*</span>
           What I&rsquo;ve described is accurate. {firstName} has the right to know what
-          they&rsquo;re carrying before accepting.
+          they&rsquo;re carrying before accepting. <em className="reqnote">(required)</em>
         </span>
       </label>
 

@@ -7,6 +7,37 @@ When you (or Claude) make a meaningful change, add a short entry here before pus
 
 ---
 
+## 2026-09-04 — Megan — three chat tweaks: plain chat by default, real addresses in the fare estimator, and a required marker
+
+Three small changes to the customer side of the chat (`src/pages/Chat.jsx`,
+plus a little CSS):
+
+1. **The chat opens plain now, not with a form in your face.** It used to drop
+   the whole "Tell {driver} about the trip" form into the empty chat straight
+   away. Now the chat opens empty with a line of text and a button in the middle
+   — **"Tell {driver} about the trip"** — that opens the form when you want it.
+   The form has an **✕** to close it and go back to the plain chat. So a customer
+   can fill in the form *or* just type a message. Nothing was removed from the
+   form itself; it's the same form, just behind a button. (`TripRequest` now
+   takes an `onClose`; the opening is gated on a new `tripOpen` state.)
+
+2. **"Estimate a fare" takes real addresses now.** It used to be two suburb
+   dropdowns. Now pick-up and drop-off use the same type-ahead address search as
+   the trip planner (`AddressField`), each with an optional house-number/gate
+   line, and the estimate is measured off the actual road distance
+   (`roadDistanceBetween`) instead of the built-in suburb table. If a street
+   isn't on the map it still lets you send — it just says the driver will quote.
+   (`FareCalculator`: `from`/`to` are now place objects, not strings; distance is
+   fetched in an effect. Dropped the now-unused `routeDistanceKm` import.)
+
+3. **The "What I've described is accurate" tick now shows it's required.** Added
+   the same red `*` and "(required)" marker the fare-estimator version already
+   had. Ticking it was already enforced (the send button stayed disabled); this
+   just makes the *why* visible.
+
+Nothing half-finished. Lints clean (same pre-existing warnings), builds, and I
+clicked through all three in the browser.
+
 ## 2026-09-04 — Megan — the "Where to?" box is now a full-screen trip planner, like Uber
 
 The pick-up / drop-off search used to drop down a little panel inside the browse

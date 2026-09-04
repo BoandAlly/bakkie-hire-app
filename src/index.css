@@ -1081,6 +1081,9 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
 
 .chat-intro { margin: auto 0; text-align: center; }
 .chat-intro p { font-size: 14.5px; line-height: 1.55; color: var(--ink-3); max-width: 320px; margin: 0 auto; }
+/* The empty chat: a plain start, with the trip form one tap away. */
+.chat-start .btn { margin-top: 16px; }
+.chat-intro .btn.secondary { margin-top: 14px; }
 
 .suggestions { display: flex; flex-direction: column; gap: 8px; margin-top: 20px; }
 
@@ -1925,6 +1928,13 @@ main { flex: 1; padding-bottom: calc(var(--nav-h) + env(safe-area-inset-bottom))
   border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface);
 }
 .triprequest h2 { margin-bottom: 4px; }
+.triprequest-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.triprequest-head h2 { margin-bottom: 0; }
+.triprequest-close {
+  flex: none; display: flex; padding: 4px;
+  border: 0; background: none; color: var(--ink-3); cursor: pointer;
+}
+.triprequest-close:hover { color: var(--ink); }
 .triprequest-route {
   display: flex; gap: 9px; align-items: flex-start;
   padding: 11px 12px; margin: 12px 0;
