@@ -2,14 +2,15 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { classById, VehicleSilhouette } from '../data/vehicleClasses.jsx'
 import { PLACES, routeDistanceKm } from '../data/places.js'
 import { quote, rateLabel, rand } from '../lib/pricing.js'
-import { timeLabel, bookingSummary, bookingDateLabel, isUpcoming } from '../lib/threads.js'
-import { nearestPlace } from '../lib/geo.js'
+import { timeLabel, bookingSummary, bookingDateLabel, isUpcoming, travelMinutes } from '../lib/threads.js'
+import { nearestPlace, haversineKm } from '../lib/geo.js'
 import { shrinkImage } from '../lib/photos.js'
 import { loadTrip, isTripSet } from '../lib/trip.js'
 import { roadDistanceBetween, fullAddress, isLocatable } from '../lib/geocode.js'
 import { formatPhone } from '../lib/session.js'
 import Icon, { Stars } from '../components/Icon.jsx'
 import CopyLocation from '../components/CopyLocation.jsx'
+import TripMap from '../components/TripMap.jsx'
 
 // Where the job actually gets arranged.
 
@@ -865,6 +866,8 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
 
       {confirmed && (
         <div className="bookingcard-action">
+          <TripTracking b={b} isDriver={isDriver} onPatch={onPatch} />
+
           {isDriver && <PhotoRow booking={b} onPhoto={onPhoto} />}
 
           {b.photoAfter && (
@@ -917,6 +920,96 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
             </div>
           )}
         </div>
+      )}
+    </div>
+  )
+}
+
+// Live tracking of the trip itself — only ever the paid leg, pick-up to
+// drop-off. The driver taps "Start trip" once loaded, which turns on location
+// sharing (the watching happens in App.jsx, keyed off tripStartedAt), and "I've
+// arrived" turns it off. The customer just watches: a moving pin and a rough
+// arrival time. The drive out to reach the customer is deliberately never here.
+function TripTracking({ b, isDriver, onPatch }) {
+  const enRoute = Boolean(b.tripStartedAt && !b.arrivedAt)
+  const arrived = Boolean(b.arrivedAt)
+
+  // Coordinates ride on the booking (pickupAt/dropoffAt), so a live map needs no
+  // extra lookup. An address the map never placed has none — the trip still runs,
+  // it just can't be drawn, and we say so rather than showing an empty box.
+  const pickLeg = b.pickupAt ? { label: b.pickup, lat: b.pickupAt.lat, lng: b.pickupAt.lng } : null
+  const dropLeg = b.dropoffAt ? { label: b.dropoff, lat: b.dropoffAt.lat, lng: b.dropoffAt.lng } : null
+  const canMap = isLocatable(pickLeg) && isLocatable(dropLeg)
+
+  const driverFirst = (b.driverName ?? 'the driver').split(' ')[0]
+  const custFirst = (b.customerName ?? 'the customer').split(' ')[0]
+
+  // Rough "arriving in" — straight-line from where the driver is now to the
+  // drop-off, at the same town-speed guess the leave-time reminders use. It's a
+  // guide, not a promise, and it only shows once a real position has come in.
+  const etaMin =
+    enRoute && b.live && dropLeg ? travelMinutes(haversineKm(b.live, dropLeg)) : null
+
+  // Once delivered there's nothing to track; the delivery note and rating take
+  // over below.
+  if (arrived) return null
+
+  // Driver, loaded and ready but not yet moving.
+  if (isDriver && !enRoute) {
+    return (
+      <button
+        className="btn secondary full"
+        onClick={() =>
+          onPatch(b.id, { tripStartedAt: new Date().toISOString(), arrivedAt: null, live: null })
+        }
+      >
+        <Icon name="route" size={17} />
+        Start trip — share my location
+      </button>
+    )
+  }
+
+  // Customer, before the driver has set off.
+  if (!enRoute) {
+    return (
+      <p className="bookingcard-wait">
+        You&rsquo;ll see {driverFirst} move on the map once they set off from the pick-up.
+      </p>
+    )
+  }
+
+  // En route — both sides see this.
+  return (
+    <div className="tracking">
+      <p className="tracking-status">
+        <span className="tracking-dot" aria-hidden="true" />
+        <span>
+          {isDriver ? `Sharing your live location with ${custFirst}` : `${driverFirst} is on the way`}
+          {etaMin != null && <em> · arriving in about {etaMin} min</em>}
+        </span>
+      </p>
+
+      {canMap ? (
+        <TripMap pickup={pickLeg} dropoff={dropLeg} driver={b.live ?? null} height={200} />
+      ) : (
+        <p className="bookingcard-note">
+          This trip&rsquo;s addresses aren&rsquo;t on the map, so there&rsquo;s no live route —{' '}
+          {isDriver ? `${custFirst} still sees you're on the way.` : `${driverFirst} is on the way.`}
+        </p>
+      )}
+
+      {!isDriver && !b.live && (
+        <p className="bookingcard-note">Waiting for {driverFirst}&rsquo;s location to come through…</p>
+      )}
+
+      {isDriver && (
+        <button
+          className="btn primary full"
+          onClick={() => onPatch(b.id, { arrivedAt: new Date().toISOString() })}
+        >
+          <Icon name="check" size={17} />
+          I&rsquo;ve arrived
+        </button>
       )}
     </div>
   )
