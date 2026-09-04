@@ -31,6 +31,7 @@ import {
   DEMO_CUSTOMER_EMAIL,
 } from './lib/customers.js'
 import { useLocation } from './lib/geo.js'
+import { onBackButton } from './lib/backButton.js'
 import {
   syncEnabled,
   pullAll,
@@ -169,6 +170,40 @@ export default function App() {
   // Deliberately NOT synced: who is signed in is per-device. You on one phone
   // and your friend on the other must stay two different people.
   useEffect(() => saveSession(session), [session])
+
+  // Android's back button. Capacitor closes the app on back by default, so a
+  // driver halfway through a listing taps back out of habit and loses it. This
+  // makes it behave like every other Android app: back one screen, then to the
+  // first tab, then a warning, then out.
+  const [exitHint, setExitHint] = useState(false)
+
+  useEffect(() => {
+    const homeTab = session.role === 'driver' ? 'enquiries' : 'explore'
+
+    return onBackButton(
+      () => {
+        // Read from state at press time, not from a stale closure.
+        let handled = false
+        setView((v) => {
+          if (PUSHED.includes(v.name)) {
+            handled = true
+            return { name: homeTab }
+          }
+          if (v.name !== homeTab) {
+            handled = true
+            return { name: homeTab }
+          }
+          return v
+        })
+        if (handled) setExitHint(false)
+        return handled
+      },
+      () => {
+        setExitHint(true)
+        setTimeout(() => setExitHint(false), 2000)
+      },
+    )
+  }, [session.role])
 
   const go = (next) => {
     setView(next)
@@ -503,6 +538,8 @@ export default function App() {
 
   return (
     <div className={pushed ? 'app pushed' : 'app'}>
+      {exitHint && <div className="exithint">Press back again to leave the app</div>}
+
       {storageFull && (
         <div className="storagewarn" role="alert">
           <strong>This phone is out of room.</strong> Your last change wasn’t saved and

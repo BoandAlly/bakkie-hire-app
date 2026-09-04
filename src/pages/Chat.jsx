@@ -556,6 +556,14 @@ function BookingForm({ listing, customerName, onClose, onBook }) {
 function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) {
   const b = booking
   const isDriver = viewAs === 'owner'
+  // All the confirming and warning happens inside the card. Android's WebView
+  // ignores window.prompt and can suppress alert and confirm, so anything that
+  // relied on them did nothing at all on a real phone.
+  const [editingPrice, setEditingPrice] = useState(false)
+  const [priceDraft, setPriceDraft] = useState('')
+  const [confirmingCancel, setConfirmingCancel] = useState(false)
+  const [clashWarning, setClashWarning] = useState('')
+
   const status = b.status ?? 'pending'
   const done = status === 'done'
   const cancelled = status === 'cancelled'
@@ -603,21 +611,30 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
     if (isDriver && onClash) {
       const clash = onClash(b)
       if (clash) {
-        window.alert(
+        // Shown in the card, not through window.alert - Android's WebView
+        // suppresses those, so the driver would have tapped confirm, seen
+        // nothing happen, and had no idea why.
+        setClashWarning(
           `You're already confirmed with ${clash.customerName} at ${clash.time} that day ` +
-            `(${clash.pickup} to ${clash.dropoff}).\n\n` +
-            `Ask one of them to move, rather than taking both.`,
+            `(${clash.pickup} to ${clash.dropoff}). Ask one of them to move, rather than ` +
+            `taking both.`,
         )
         return
       }
     }
+    setClashWarning('')
     const key = isDriver ? 'driverConfirmed' : 'customerConfirmed'
     patch({ [key]: true, ...(otherConfirmed ? { status: 'confirmed' } : {}) })
   }
 
+  // Cancelling is worth a second tap, but through the card rather than a
+  // browser dialog the phone may never show.
   const cancelPickup = () => {
-    if (!window.confirm('Cancel this pickup? The other person will see it was called off.'))
+    if (!confirmingCancel) {
+      setConfirmingCancel(true)
       return
+    }
+    setConfirmingCancel(false)
     patch({ status: 'cancelled', cancelledBy: viewAs, cancelledAt: new Date().toISOString() })
   }
 
@@ -644,18 +661,7 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
           <button
             className="btn go"
             disabled={isDriver && !b.price}
-            onClick={() => {
-              if (isDriver && !b.price) return
-              if (
-                !window.confirm(
-                  isDriver
-                    ? `Confirm at ${rand(b.price)}? The price is fixed once you do.`
-                    : `Accept this pickup at ${rand(b.price)}?`,
-                )
-              )
-                return
-              confirmPickup()
-            }}
+            onClick={confirmPickup}
           >
             <Icon name="check" size={17} />
             {isDriver
@@ -664,10 +670,26 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
                 : 'Set a price to confirm'
               : `Quick confirm - ${rand(b.price)}`}
           </button>
-          <button className="btn ghost" onClick={cancelPickup}>
-            Cancel
+          <button
+            className={confirmingCancel ? 'btn danger' : 'btn ghost'}
+            onClick={cancelPickup}
+          >
+            {confirmingCancel ? 'Tap again to cancel' : 'Cancel'}
           </button>
         </div>
+      )}
+
+      {clashWarning && (
+        <p className="bookingcard-clash">
+          <Icon name="close" size={15} />
+          {clashWarning}
+        </p>
+      )}
+      {isDriver && !priceLocked && b.price > 0 && (
+        <p className="bookingcard-note">
+          Confirming fixes {rand(b.price)} - {custName.split(' ')[0]} is then asked to accept
+          that exact figure.
+        </p>
       )}
 
       <div className="bookingcard-rows">
@@ -693,29 +715,69 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
       </div>
 
       {/* The price. It belongs to the driver — they set it, they can change it,
-          and the customer is agreeing to their number, not to an app's guess. */}
+          and the customer is agreeing to their number, not to an app's guess.
+          The customer's own estimate is the starting point, so the usual case
+          is agreeing with a figure rather than typing one from nothing.
+          Everything here is inline: Android's WebView ignores window.prompt,
+          so the old version silently did nothing on an actual phone. */}
       <div className="bookingcard-price">
         <span>
-          <em>Price for this trip</em>
-          <strong>{b.price ? rand(b.price) : 'Not set yet'}</strong>
+          <em>{editingPrice ? 'What are you charging?' : 'Price for this trip'}</em>
+          {editingPrice ? (
+            <span className="pricefield">
+              <span>R</span>
+              <input
+                type="number"
+                inputMode="numeric"
+                min="1"
+                autoFocus
+                value={priceDraft}
+                onChange={(e) => setPriceDraft(e.target.value)}
+                aria-label="Price in rands"
+              />
+            </span>
+          ) : (
+            <strong>{b.price ? rand(b.price) : 'Not set yet'}</strong>
+          )}
+          {!editingPrice && !b.price && b.estimate > 0 && (
+            <em className="pricehint">
+              {custName.split(' ')[0]} was quoted about {rand(b.estimate)} by the app
+            </em>
+          )}
         </span>
-        {canSetPrice && (
-          <button
-            className="btn secondary"
-            onClick={() => {
-              const typed = window.prompt(
-                'What are you charging for this trip? Rands only.',
-                b.price ? String(b.price) : '',
-              )
-              if (typed == null) return
-              const amount = Math.round(Number(String(typed).replace(/[^\d.]/g, '')))
-              if (!Number.isFinite(amount) || amount <= 0) return
-              patch({ price: amount })
-            }}
-          >
-            {b.price ? 'Change' : 'Set price'}
-          </button>
-        )}
+
+        {canSetPrice &&
+          (editingPrice ? (
+            <span className="pricefield-actions">
+              <button
+                className="btn primary"
+                onClick={() => {
+                  const amount = Math.round(Number(String(priceDraft).replace(/[^\d.]/g, '')))
+                  if (!Number.isFinite(amount) || amount <= 0) return
+                  patch({ price: amount })
+                  setEditingPrice(false)
+                }}
+              >
+                Save
+              </button>
+              <button className="btn ghost" onClick={() => setEditingPrice(false)}>
+                Cancel
+              </button>
+            </span>
+          ) : (
+            <button
+              className="btn secondary"
+              onClick={() => {
+                // Start from the customer's estimate rather than an empty box:
+                // they have already been shown a number, and most of the time
+                // the driver is agreeing with it.
+                setPriceDraft(String(b.price || b.estimate || ''))
+                setEditingPrice(true)
+              }}
+            >
+              {b.price ? 'Change' : b.estimate > 0 ? `Set price` : 'Set price'}
+            </button>
+          ))}
       </div>
 
       {isDriver && !priceLocked && (
@@ -747,11 +809,17 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
           <strong>{b.driverName}</strong>
           <em>Your driver</em>
         </span>
-        {b.driverPhone && (
+        {/* A driver's number is not handed out for asking. It appears once
+            they have accepted the job, which is the point at which a customer
+            has a reason to ring them - and the point at which the driver has
+            agreed to be rung. Before that, the chat is the way to talk. */}
+        {b.driverPhone && (isDriver || b.driverConfirmed) ? (
           <a className="bookingcard-call" href={`tel:${b.driverPhone.replace(/\s/g, '')}`}>
             <Icon name="message" size={15} />
             {formatPhone(b.driverPhone)}
           </a>
+        ) : (
+          <span className="bookingcard-nocall">Number shown once confirmed</span>
         )}
       </div>
 
@@ -770,15 +838,7 @@ function BookingCard({ booking, at, viewAs, onPatch, onPhoto, onClash = null }) 
             <button
               className="btn primary full"
               disabled={!b.price}
-              onClick={() => {
-                if (
-                  !window.confirm(
-                    `Confirm this pickup at ${rand(b.price)}? The price is fixed once you do, and ${custName} will be asked to accept it.`,
-                  )
-                )
-                  return
-                confirmPickup()
-              }}
+              onClick={confirmPickup}
             >
               <Icon name="check" size={17} />
               {b.price ? `Confirm at ${rand(b.price)}` : 'Set a price first'}
