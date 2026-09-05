@@ -64,9 +64,9 @@ app uses everywhere, on the brand blue.
   outlines, which close up into mush at 24dp.
 - **In the notification** — `ic_notify_large.xml`, the colour version, shown on
   the right-hand side.
-- **Home screen** — the same bakkie replaces the Android robot. Note the legacy
-  PNG icons for Android 7 are still the old ones; anything Android 8 or newer
-  (which is effectively everyone) gets the new one.
+- **Home screen — unchanged.** The app icon is still the one it was. I had
+  swapped it for the bakkie too and Megan put it back: only the notifications
+  needed fixing, and the app icon is a separate decision to make deliberately.
 
 **Tapping one opens the right chat now.** It used to just open the app wherever
 you last left it, which made the notification feel like it had done nothing.
